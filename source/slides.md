@@ -13,20 +13,43 @@
 
 NOTES:
 - Hi. Eirik. Platform, lot of things related to kube and rust.
-- testing, building, and pushing dockerised rust apps
-- Deploying to kube (largely glossing over this)
-- Talking to the kubernetes API and extending it with your own custom resources
+- Writing kube controllers, and extending the kubernetes API with your own CRs
+- but first, little basics on image lifecycle management (little on it in rust)
+- ==testing, building, and pushing dockerised rust apps
 
 ---
-<!-- .slide: data-background-color="#353535" -->
-Building
-
-- Cargo.lock
-- cargo build
-- dockerise
+<!-- .slide: data-background-image="./fry-safety.webp" data-background-size="100% auto" class="color"-->
 
 notes:
-- why mention? cargo build + docker?
+- safety dance: ez coz language: lockfiles default, build system (adv over go)
+- but dockerising
+
+---
+<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+docker
+
+
+<ul>
+  <li class="fragment">[FROM rust:1.36-stretch](https://hub.docker.com/_/rust)</li>
+  <li class="fragment">[travis-ci/languages/rust](https://docs.travis-ci.com/user/languages/rust/)</li>
+  <li class="fragment">[circleci docker builds](https://circleci.com/docs/2.0/building-docker-images/)
+</li>
+
+notes:
+- sure, official mstage images, travis official support.. BUT
+- docker in ci => nothing given to you
+- caching? build times big downside
+- circle has better way to split out docker cmd requiring builds
+- circle no rust support, but no matter
+- circle examples (even if super error-prone, quirky yaml)
+
+---
+<!-- .slide: data-background-image="./zoid-speed.webp" data-background-size="100% auto" class="color"-->
+
+notes:
+- alpine vs ubuntu
+- TODO: was going to make speed argument here, but seems contradictory..
+- TODO: distroless?
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
@@ -39,10 +62,10 @@ alpine
 </li>
 
 notes:
-- musl-libc is a rewrite of glibc, smaller, more performant (some benchmarks)
+- musl-libc is an 8yo libc inmpl (smaller than glibc, static link, more performant (some benchmarks)
 - 10-30% performance improvement suggested (but bench for your case..)
 - fewer code paths, less of the specific glibc legacy, but more edge cases (locales, glibc specifics)
-- busybox: single binary version of coreutils(TODO: ?)
+- busybox: single binary version 300 linux tools - coreutils replace
 - together: alpine; 5MB linux distro
 - don't pick scratch, 5MB small price to pay for bash and a working package manager
 - don't pick ubuntu unless you need to (order of magnitude more disk space)
