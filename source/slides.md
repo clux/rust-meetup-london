@@ -28,7 +28,6 @@ notes:
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
 docker
 
-
 <ul>
   <li class="fragment">[FROM rust:1.36-stretch](https://hub.docker.com/_/rust)</li>
   <li class="fragment">[travis-ci/languages/rust](https://docs.travis-ci.com/user/languages/rust/)</li>
@@ -43,13 +42,35 @@ notes:
 - circle no rust support, but no matter
 - circle examples (even if super error-prone, quirky yaml)
 
+
+---
+caching
+
+<ul>
+<li class="fragment">1GB cache for 10MB artifact</li>
+<li class="fragment">[docker build does not support cached input](https://github.com/moby/moby/issues/7665)</li>
+<li class="fragment">[circleci buildkit support](https://ideas.circleci.com/ideas/CCI-I-1003)</li>
+<li class="fragment">[circleci buildkit orb](https://circleci.com/orbs/registry/orb/springload/buildkit)</li>
+</ul>
+TODO: test it?
+
+notes:
+- motivation: rust sizes.. 10min build vs 30s build
+- docker build: closed issue on caching build dir (rabbit hole link)
+- multistage: same issue
+- buildkit: better replacement
+- docker run with volume mount and caching the directory
+
+
 ---
 <!-- .slide: data-background-image="./zoid-speed.webp" data-background-size="100% auto" class="color"-->
 
 notes:
 - alpine vs ubuntu
-- TODO: was going to make speed argument here, but seems contradictory..
-- TODO: distroless?
+- speed argument (contradictory, measure)
+- least privilege principle (sensible argument)
+- (glossing over security anyway so don't read too much into it - root)
+- compiling for musl => reuseable on all distros (not true other way)
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
@@ -57,19 +78,18 @@ notes:
 alpine
 
 <ul>
-  <li class="fragment">musl-libc</li>
-  <li class="fragment">busybox</li>
+  <li class="fragment"><a href="https://www.musl-libc.org/intro.html">musl-libc</a></li>
+  <li class="fragment"><a href="https://busybox.net/downloads/BusyBox.html#commands">busybox</a></li>
 </li>
 
 notes:
-- musl-libc is an 8yo libc inmpl (smaller than glibc, static link, more performant (some benchmarks)
-- 10-30% performance improvement suggested (but bench for your case..)
+- musl-libc is an 8yo libc inmpl (smaller than glibc, static link, more performant (some benchmarks 10-30% but bench)
 - fewer code paths, less of the specific glibc legacy, but more edge cases (locales, glibc specifics)
 - busybox: single binary version 300 linux tools - coreutils replace
 - together: alpine; 5MB linux distro
 - don't pick scratch, 5MB small price to pay for bash and a working package manager
 - don't pick ubuntu unless you need to (order of magnitude more disk space)
-- distroless; sure, it's basically equivalent to...
+- distroless; sure, but with go/rust why?
 
 ---
 <!-- .slide: class="color" style="min-width: 100%" -->
@@ -77,10 +97,12 @@ normal image
 
 ```dockerfile
 FROM alpine:3.9
-RUN apk --no-cache add ca-certificates
-COPY ./controller /bin/
+RUN apk --no-cache add ca-certificates && \
+    adduser usr -Du 1000 -h /app
+COPY ./controller /app/bin
 EXPOSE 8080
-ENTRYPOINT ["/bin/controller"]
+USER usr
+ENTRYPOINT ["/app/bin/controller"]
 ```
 
 notes:
@@ -94,7 +116,7 @@ notes:
 - designed for one binary per container (otherwise you duplicate C deps within container)
 
 ---
-compiling for musl
+compiling for musl (pure rust)
 
 ```sh
 rustup target add x86_64-unknown-linux-musl
@@ -103,11 +125,13 @@ cargo build --target=x86_64-unknown-linux-musl --release
 
 notes:
 - easiest locally, basic cross compilation support in rust already
-- but you may find it doesn't work depending on what dependencies you need
+- might make travis nice, but this will fail with c deps
+- opensssl big one (tho might be replaced by rusttls.. benches)
 - psql (or other sql client)
-- curl (but not needed anymore due to hyper), openssl (hyper ssl support, alternatives underway)
-- zlib (serving anything gzipped)
-- any other library that has C bindings
+- curl (but not needed anymore due to hyper)
+- zlib (serving anything gzipped, but miniz.h works)
+- other library that has C bindings (that's not self-contained in -sys crate)
+
 ---
 compiling for musl (with C dependencies)
 
@@ -120,6 +144,7 @@ docker run --rm \
 
 notes:
 - one of 3-4 big musl build images (this is the only one that builds continually and makes descriptive tags)
+- -v line reason for no multistage (no build mounts)
 - push like 20GB a month from travis for free for this
 - my image, so you may want to fork it in a company.. really rust should support it (but no feedback on that)
 - (curl, openssl, psql, zlib, sqlite)
@@ -130,15 +155,14 @@ ci flow
 
 ```
 1. cargo test
-1. cargo build --release (then stash musl binary)
-2. github releases (attach musl binary to release on tag build)
-2. docker build (attach musl binary) && docker push
+1. cargo build --release
+2. docker build && docker push
+2. github releases
 ```
-TODO: replace with shipcat tag flow?
 
 notes:
-- why not multistage? caching + releasing
-- caching -> open docker issue on caching build dir
+- 1. stashes musl binary, 2. attaches it from prev (so super quick)
+- 2. master only (maybe tag only)
 - releasing -> separate thing you can do with a binary (if building a CLI tool)
 - what is multistage except removing that possibility for a tiny encapulation win?
 
@@ -209,18 +233,17 @@ notes:
 - PR build from branch: (cargo test + musl build)
 - master merge: (musl build + docker build)
 - github release: (musl + mac build then docker build + github_release)
-
 - test + build in musl? may as well.
 
 ---
-<!-- .slide: data-background-color="#353535" -->
-Kubernetes
+<!-- .slide: data-background-image="./zoid-resignation.webp" data-background-size="100% auto" class="color"-->
 
-breather slide.. images.. memes
+notes:
+- lezz get our rust integrated with k8s
 
 ---
 <!-- .slide: data-background-color="#353535" -->
-Kubernetes
+Kubernetes Deployment
 
 ```yaml
 apiVersion: apps/v1
@@ -240,8 +263,6 @@ spec:
 
 notes:
 - missing all the things: resource requests/limits, readinessProbe, evars, service account, ports, labels
-- framework choice. hyper or actix. (actix benches are awesome but futures learning curve)
-- rocket is super nice, but still synchronous
 
 ---
 <!-- .slide: data-background-color="#353535" -->
@@ -505,7 +526,10 @@ what
 breather slide
 
 notes:
-- question on using kube api
+- putting it all together with actix
+- framework choice. hyper or actix. (actix benches are awesome but futures learning curve)
+- rocket is super nice, but still synchronous
+- question on using kube api?
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
