@@ -99,10 +99,11 @@ normal image
 FROM alpine:3.9
 RUN apk --no-cache add ca-certificates && \
     adduser usr -Du 1000 -h /app
-COPY ./controller /app/bin
+COPY ./controller /app
 EXPOSE 8080
 USER usr
-ENTRYPOINT ["/app/bin/controller"]
+WORKDIR /app
+ENTRYPOINT ["/app/controller"]
 ```
 
 notes:
@@ -163,7 +164,7 @@ ci flow
 notes:
 - 1. stashes musl binary, 2. attaches it from prev (so super quick)
 - 2. master only (maybe tag only)
-- releasing -> separate thing you can do with a binary (if building a CLI tool)
+- releasing for cli bins (may do multiple release builds)
 - what is multistage except removing that possibility for a tiny encapulation win?
 
 ---
@@ -269,17 +270,18 @@ notes:
 Connecting to kubernetes api
 
 ```rust
-let cfg = match env::var("HOME").expect("have HOME dir").as_ref() {
-    "/root" => kube::config::incluster_config(),
-    _ => kube::config::load_kube_config(),
-}.expect("Failed to load kube config");
+let cfg = kube::config::incluster_config().or_else(|_| {
+    kube::config::load_kube_config()
+}).expect("Failed to load kube config");
 let client = kube::client::APIClient::new(cfg)?;
 ```
 
+TODO: test
+[..impersonate locally](https://clux.github.io/probes/post/2019-03-31-impersonating-kube-accounts/)
+
 notes:
 - switch for local dev (cargo run)
-- local dev might not work if you have auth hooks or oidc providers (can impersonate) TODO: link!
-- TODO: why root in container?!
+- local dev might not work if you have auth hooks or oidc providers (can impersonate)
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
@@ -519,11 +521,7 @@ notes:
 - and ensuring that you can reconcile changes
 
 ---
-<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
-
-what
-
-breather slide
+<!-- .slide: data-background-image="./zoid-no.webp" data-background-size="100% auto" class="color"-->
 
 notes:
 - putting it all together with actix
