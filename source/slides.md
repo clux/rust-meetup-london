@@ -2,27 +2,27 @@
 
 ### Rust on kubernetes
 
-- Eirik Albrigtsen : [github.com/clux](https://github.com/clux)
+- Eirik Albrigtsen : [github.com/clux](https://github.com/clux) - [clux.dev](https://clux.dev)
 - Babylon Health : [github.com/Babylonpartners](https://github.com/Babylonpartners)
 
-<img src="./babylon.png" style="border: 0px; width: 120px; position: absolute; top: 300px; left: 0px" />
-<img src="./babylon.png" style="border: 0px; width: 120px; position: absolute; top: 300px; left: 140px" />
-<img src="./babylon.png" style="border: 0px; width: 120px; position: absolute; top: 300px; left: 280px" />
-<img src="./babylon.png" style="border: 0px; width: 120px; position: absolute; top: 300px; left: 420px" />
-<img src="./babylon.png" style="border: 0px; width: 120px; position: absolute; top: 300px; left: 560px" />
+<img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 300px; left: 0px" />
+<img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 300px; left: 140px" />
+<img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 300px; left: 280px" />
+<img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 300px; left: 420px" />
+<img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 300px; left: 560px" />
 
 NOTES:
 - Hi. Eirik. Platform, lot of things related to kube and rust.
 - Writing kube controllers, and extending the kubernetes API with your own CRs
 - but first, little basics on image lifecycle management (little on it in rust)
-- ==testing, building, and pushing dockerised rust apps
+- => testing, building, and pushing dockerised rust apps
 
 ---
 <!-- .slide: data-background-image="./fry-safety.webp" data-background-size="100% auto" class="color"-->
 
 notes:
 - safety dance: ez coz language: lockfiles default, build system (adv over go)
-- but dockerising
+- but dockerising, slightly tricky
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
@@ -35,42 +35,47 @@ docker
 </li>
 
 notes:
-- sure, official mstage images, travis official support.. BUT
+- not tricky because no official support...
+- official mstage images, travis official support, circleci docker.. BUT
+
 - docker in ci => nothing given to you
 - caching? build times big downside
 - circle has better way to split out docker cmd requiring builds
-- circle no rust support, but no matter
 - circle examples (even if super error-prone, quirky yaml)
 
 
 ---
+<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
 caching
 
 <ul>
 <li class="fragment">1GB cache for 10MB artifact</li>
 <li class="fragment">[docker build does not support cached input](https://github.com/moby/moby/issues/7665)</li>
-<li class="fragment">[circleci buildkit support](https://ideas.circleci.com/ideas/CCI-I-1003)</li>
-<li class="fragment">[circleci buildkit orb](https://circleci.com/orbs/registry/orb/springload/buildkit)</li>
+<li class="fragment">[circleci buildkit support](https://ideas.circleci.com/ideas/CCI-I-1003) - [buildkit orb](https://circleci.com/orbs/registry/orb/springload/buildkit)</li>
 </ul>
-TODO: test it?
 
 notes:
 - motivation: rust sizes.. 10min build vs 30s build
 - docker build: closed issue on caching build dir (rabbit hole link)
 - multistage: same issue
-- buildkit: better replacement
-- docker run with volume mount and caching the directory
-
+- buildkit: better replacement in future
+- => docker run with volume mount and caching the directory
 
 ---
 <!-- .slide: data-background-image="./zoid-speed.webp" data-background-size="100% auto" class="color"-->
 
+<img src="./gnu.png" style="float: left; background: none; box-shadow: none; border: none; position: absolute; right: 0px" />
+<img src="./alpine.png" style="float: left; filter: brightness(2); background: none; box-shadow: none; border: none; position: absolute;" />
+<img src="./distroless.png" style="float: left; background: none; box-shadow: none; border: none; position: absolute; left: 0px" />
+
 notes:
-- alpine vs ubuntu
-- speed argument (contradictory, measure)
+- ubuntu vs alpine vs distroless:static
 - least privilege principle (sensible argument)
-- (glossing over security anyway so don't read too much into it - root)
-- compiling for musl => reuseable on all distros (not true other way)
+- benchmark / speed argument of libc choice (contradictory, measure)
+- last 2 => compile for musl
+- musl-libc is an 8yo libc inmpl (smaller than glibc, static link, more performant (some benchmarks 10-30% but bench)
+- reuseable on all distros (not true other way)
+
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
@@ -83,23 +88,21 @@ alpine
 </li>
 
 notes:
-- musl-libc is an 8yo libc inmpl (smaller than glibc, static link, more performant (some benchmarks 10-30% but bench)
 - fewer code paths, less of the specific glibc legacy, but more edge cases (locales, glibc specifics)
 - busybox: single binary version 300 linux tools - coreutils replace
 - together: alpine; 5MB linux distro
 - don't pick scratch, 5MB small price to pay for bash and a working package manager
 - don't pick ubuntu unless you need to (order of magnitude more disk space)
-- distroless; sure, but with go/rust why?
 
 ---
-<!-- .slide: class="color" style="min-width: 100%" -->
-normal image
+<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+alpine based image
 
 ```dockerfile
 FROM alpine:3.9
 RUN apk --no-cache add ca-certificates && \
     adduser usr -Du 1000 -h /app
-COPY ./controller /app
+COPY --chown=usr:usr ./controller /app/
 EXPOSE 8080
 USER usr
 WORKDIR /app
@@ -117,6 +120,7 @@ notes:
 - designed for one binary per container (otherwise you duplicate C deps within container)
 
 ---
+<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
 compiling for musl (pure rust)
 
 ```sh
@@ -127,13 +131,14 @@ cargo build --target=x86_64-unknown-linux-musl --release
 notes:
 - easiest locally, basic cross compilation support in rust already
 - might make travis nice, but this will fail with c deps
-- opensssl big one (tho might be replaced by rusttls.. benches)
+- openssl big one (tho might be replaced by rusttls.. benches)
 - psql (or other sql client)
 - curl (but not needed anymore due to hyper)
 - zlib (serving anything gzipped, but miniz.h works)
 - other library that has C bindings (that's not self-contained in -sys crate)
 
 ---
+<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
 compiling for musl (with C dependencies)
 
 ```sh
@@ -144,12 +149,27 @@ docker run --rm \
 ```
 
 notes:
-- one of 3-4 big musl build images (this is the only one that builds continually and makes descriptive tags)
-- -v line reason for no multistage (no build mounts)
+- one of 3-4 big musl build images (this is the only one that builds continually and makes descriptive tags), 2M dls
 - push like 20GB a month from travis for free for this
+- bump stable every 6w, and script to auto-bump deps
 - my image, so you may want to fork it in a company.. really rust should support it (but no feedback on that)
 - (curl, openssl, psql, zlib, sqlite)
 - there are more general cross compile (cross, xargo, embedded), but for cloud: musl 64 bit linux FTW.
+
+---
+<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+compiling for musl (with C dependencies)
+
+```sh
+docker run --rm \
+  -v $PWD:/volume \
+  -v cargo-cache:/root/.cargo/registry \
+  -t clux/muslrust:stable \
+  cargo build --release
+```
+notes:
+- how to add a cache
+- can also do .cargo/git
 
 ---
 ci flow
@@ -175,32 +195,31 @@ caching (circleci)
     docker: [ { image: clux/muslrust:stable-1.36.0 } ]
     steps:
       - checkout
-      - restore_cache:
-          keys: ["reg-{{ .Environment.CACHE_VERSION }}"]
-      - restore_cache:
-          keys: ["targ-{{ .Environment.CACHE_VERSION }}"]
+      - restore_cache: { keys: ["registry"] }
+      - restore_cache: { keys: ["target"] }
       - run: cargo build --release
 ```
 ```yaml
       - save_cache:
-          key: targ-{{ .Environment.CACHE_VERSION }}
+          key: target
           paths: ["target"]
       - save_cache:
-          key: reg-{{ .Environment.CACHE_VERSION }}
+          key: registry
           paths: ["/root/.cargo"]
       - run: mv target/MUSLTRIPLE/release/app{,.MUSLTRIPLE}
       - persist_to_workspace:
           root: target/MUSLTRIPLE/release/
           paths: ["app.MUSLTRIPLE"]
 ```
-
+[cargo#5026](https://github.com/rust-lang/cargo/issues/5026)
 
 notes:
 - {TRIPLE} = `x86_64-unknown-linux-musl`
 - minimal circle steps with caching
 - caches two things: registry (DOWNLOADING CRATE), target (COMPILING CRATE)
-- lets you fiddle the cache version. why? `sha(.lock)` is inefficient depending on release cadence
-- that is recommended though
+- additive unbounded; add evar, cargo clean, or base cache on sha(lockfile)
+- sha(lockfile) is inefficient depending on release cadence
+- cargo clean bug, cargo sweep
 
 ---
 flow (circleci)
@@ -230,7 +249,7 @@ flow (circleci)
 ```
 
 notes:
-- abbreviating awkward circle yaml a bit here (general idea, but should be valid)
+- abbreviating awkward circle yaml 4general idea
 - PR build from branch: (cargo test + musl build)
 - master merge: (musl build + docker build)
 - github release: (musl + mac build then docker build + github_release)
