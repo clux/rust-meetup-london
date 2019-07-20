@@ -421,8 +421,8 @@ notes:
 Higher level abstractions
 
 <ul>
-  <li class="fragment">`Informer<K>`</li>
-  <li class="fragment">`Reflector<K>`</li>
+  <li class="fragment">`Informer<K>` (event informer)</li>
+  <li class="fragment">`Reflector<K>` (in-memory cache)</li>
 </li>
 
 notes:
@@ -678,14 +678,14 @@ Putting it together - extra crates
 
 <ul>
   <li class="fragment">prometheus / actix_web_prom</li>
-  <li class="fragment">env_logger / femme</li>
+  <li class="fragment">env_logger</li>
   <li class="fragment">sentry / sentry_actix <small>([sentry-rust#143](https://github.com/getsentry/sentry-rust/issues/143))</small></li>
 </li>
 
 notes:
 - custom metrics => prometheus library, actix transform for no mesh
 - actix_web_prom does basic latency metrics in two lines (.wrap)
-- env_logger (precise drilling), femme (new) can switch between json and pretty easily
+- env_logger (precise RUST_LOG drilling really useful, tokio spammy)
 - sentry actix integration, 2 lines, panic handler + middleware (unf. broken in actix 1.0)
 
 ---
@@ -694,9 +694,9 @@ Examples
 
 <ul>
   <li class="fragment">[kube-rs/examples](https://github.com/clux/kube-rs/tree/master/examples)</li>
-  <li class="fragment">[controllers-rs](https://github.com/clux/controller-rs)</li>
-  <li class="fragment">[version-rs](https://github.com/clux/version-rs)</li>
-</li>
+  <li class="fragment">[version-rs](https://github.com/clux/version-rs) (super light, ~100 lines)</li>
+  <li class="fragment">[controllers-rs](https://github.com/clux/controller-rs) (circleci, kube yaml, 3 file split)</li>
+</ul>
 
 notes:
 - kube ex for reflectors, informer, basics + api usage
@@ -707,7 +707,7 @@ notes:
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
 why make your own controller
 
-breather slide...
+TODO: breather slide...
 
 notes:
 - kube has 100 of them and they all reconcile the state
@@ -716,6 +716,9 @@ notes:
 - old model: having N CI jobs per cluster, triggering them periodically, implementing diffing (do i need to do something) yourself, reconcile state in the job
 - new model: write one tiny app, in a way that's meant to deal with events, deploy it to all clusters
 
+
+---
+<!-- .slide: data-background-image="./zoid-no.webp" data-background-size="100% auto" class="color"-->
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
