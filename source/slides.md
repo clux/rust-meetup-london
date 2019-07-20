@@ -258,7 +258,7 @@ notes:
 - lezz get our rust integrated with k8s
 
 ---
-<!-- .slide: data-background-color="#353535" -->
+<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
 Kubernetes Deployment
 
 ```yaml
@@ -281,7 +281,7 @@ notes:
 - missing all the things: resource requests/limits, readinessProbe, evars, service account, ports, labels
 
 ---
-<!-- .slide: data-background-color="#353535" -->
+<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
 Connecting to kubernetes api
 
 ```rust
@@ -340,11 +340,12 @@ impl<K> Api<K> where
 notes:
 - can treat each KubeObject generically - following kube apimachinery assumptions
 - slightly simplified signatures (Params object for all but get)
+- delete either (like 201 created)
 - hidden subresources like get_scale, replace_status, done most core objs
 - if any missing, only need 5 lines in kube, PRs guide (client-go==80k, 20x our)
 
 ---
-<!-- .slide: data-background-color="#353535" -->
+<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
 Using the kubernetes api
 
 ```rust
@@ -387,6 +388,7 @@ Controller scope
 <ul>
   <li class="fragment">[Kubernetes Control Plane for Busy People Who Like Pictures](https://www.youtube.com/watch?v=zCXiXKMqnuE)</li>
   <li class="fragment">[Writing Kubernetes Controllers for CRDs](https://www.youtube.com/watch?v=7wdUa4Ulwxg)</li>
+  <li class="fragment">[Writing Kube Controllers for Everyone](https://www.youtube.com/watch?v=AUNPLQVxvmw)</li>
   <li class="fragment">[CNCF youtube](https://www.youtube.com/channel/UCvqbFHwN-nwalWPjPUKpvTA)</li>
 </li>
 
@@ -394,16 +396,18 @@ notes:
 - limiting my talk to rust stuff, assuming some CRD familiarity here.. BUT:
 - busy people: all controllers, great 4 learning kube + ctrl scope KCon2019
 - Writing Controllers for CRDs (doing it in go, shows what a ballache it is)
-- CNC
+- Last one, high level. Useful for knowing why controllers are what they are.
+- CNCF channel has all kubecon videos
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
 Controller patterns
 
-```fortran
-10 WATCH resource
-20 REACT to modified/added/deleted events
-30 GOTO 10
+```basic
+10 WATCH CustomResource:
+     WHILE WatchEvent
+         RECONCILE(CustomResource, event)
+20 GOTO 10
 ```
 
 notes:
@@ -424,7 +428,7 @@ Higher level abstractions
 notes:
 - Informer: lets you handle raw events as they come in
 - Use case: make changes to it/other resources when events occur (controller pattern)
-- Ref: maintains an in memory cache of a ressource K (only REACTION)
+- Reflector: maintains an in memory cache of all Ks
 - Updates when it polls, with a RwLock, and lets you read whenever.
 - Use case: monitoring a resource, presenting an api around many resources..
 - (Can build a Ref from an Inf by just using events to update a local Map).
@@ -454,19 +458,7 @@ notes:
 - go you attach event handlers to the informers
 - rust we drain an internal queue and get events moved to us
 - o is complete object (Pod object here)
-
----
-<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
-why make your own controller
-
-breather slide...
-
-notes:
-- kube has 100 of them and they all reconcile the state
-- a controller can keep track of state in status, and work towards reconciling
-- its a nicer model than config management monorepo (for things that fit the cluster model)
-- old model: having N CI jobs per cluster, triggering them periodically, implementing diffing (do i need to do something) yourself, reconcile state in the job
-- new model: write one tiny app, in a way that's meant to deal with events, deploy it to all clusters
+- error watch event: bookmark
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
@@ -476,12 +468,12 @@ what is an object
 #[derive(Deserialize, Serialize, Clone)]
 pub struct Object<T, U> where T: Clone, U: Clone
 {
-    #[serde(flatten)]
-    pub types: TypeMeta,
-    pub metadata: ObjectMeta,
-    pub spec: T,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub status: Option<U>,
+  #[serde(flatten)]
+  pub types: TypeMeta,
+  pub metadata: ObjectMeta,
+  pub spec: T,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub status: Option<U>,
 }
 ```
 
@@ -513,10 +505,39 @@ type Foo = Object<FooSpec, FooStatus>;
 notes:
 - in go you need the external codegen for this, but in rust it's all generics
 - write the struct, derive our traits
-- (pass some initial yaml to kube api server, ~30 lines generally)
 
 ---
-<!-- .slide: data-background-image="./guesswork.gif" data-background-size="100% auto" style="color: #2fa;" -->
+<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+
+```yaml
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: foos.clux.dev
+spec:
+  group: clux.dev
+  names:
+    kind: Foo
+    listKind: FooList
+    plural: foos
+    singular: foo
+  scope: Namespaced
+```
+```yaml
+  version: v1
+  versions:
+  - name: v1
+    served: true
+    storage: true
+  subresources:
+    status: {}
+```
+notes:
+- pass some initial yaml to kube api server, ~20 lines generally
+- formality; can be lax, can define openapi schema.
+
+---
+<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
 Using the CRD api
 
 ```rust
@@ -537,41 +558,170 @@ notes:
 Using the CRD api
 
 ```rust
-let foos = Api::customResource("foos")
-    .version("v1")
-    .group("clux.dev")
-    .within(&namespace);
-let foo_inf = Informer::new(client.clone(), foos)
-    .timeout(30)
+let inf = Informer::new(foos)
+    .timeout(15)
     .init()?;
 ```
 notes:
 - can make informers + reflectors on them
 - from there you can basically just start handling events
 - and ensuring that you can reconcile changes
+- but something needs to drive it...
 
 ---
-<!-- .slide: data-background-image="./zoid-no.webp" data-background-size="100% auto" class="color"-->
+<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+Driving an Informer
+
+```rust
+loop {
+    inf.poll()?;
+    while let Some(event) = inf.pop() {
+        reconcile(&client, event)?;
+    }
+}
+```
 
 notes:
-- putting it all together with actix
-- framework choice. hyper or actix. (actix benches are awesome but futures learning curve)
-- rocket is super nice, but still synchronous
-- question on using kube api?
+- rwlock internally, but otherwishe shareable informer/reflector
+- poll writes to the state, pop extracts
+- similar for reflector
+- loop to drive in ex, if you have other stuff (web), make a thread
+
+---
+<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+Putting it together
+
+```rust
+#[derive(Clone)]
+pub struct Controller {
+    inf: Informer<Foo>,
+    state: Arc<RwLock<State>>,
+    metrics: Arc<RwLock<Metrics>>,
+    client: APIClient,
+}
+```
+
+```rust
+#[derive(Clone)]
+pub struct Watcher {
+    rf: Reflector<Deploy>,
+    state: Arc<RwLock<Vec<Entry>>>,
+    client: APIClient,
+}
+```
+
+notes:
+- object to share with actix state
+- interface and metrics etc, business logic
+
+---
+<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+Putting it together - main
+
+```rust
+fn main() {
+  let cfg = kube::config::incluster_config().or_else(|_| {
+      kube::config::load_kube_config()
+  }).expect("Load kube config");
+  let watcher = Watcher::init(cfg).expect("Watcher init");
+```
+```rust
+  let sys = actix::System::new("watcher");
+  HttpServer::new(move || {
+    App::new()
+      .data(watcher.clone())
+      .wrap(middleware::Logger::default().exclude("/health"))
+      .service(web::resource("/").to(index))
+      .service(web::resource("/health").to(health))
+    })
+    .bind("0.0.0.0:8000").expect("Bind 0.0.0.0:8000")
+    .shutdown_timeout(0)
+    .start();
+  let _ = sys.run();
+}
+```
+
+---
+<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+Putting it together - routes
+
+```rust
+fn index(w: Data<Watcher>, _: HttpRequest) -> HttpResponse {
+    HttpResponse::Ok().json(w.state())
+}
+fn health(_: HttpRequest) -> HttpResponse {
+    HttpResponse::Ok().json("healthy")
+}
+```
+
+---
+<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+Putting it together - dependencies
+
+```toml
+kube = "0.11.0"
+```
+
+```toml
+kube = { version = "0.11.0", features = ["openapi"] }
+k8s-openapi = { version = "0.4.0", features = ["v1_13"] }
+```
+
+notes:
+- either plain, great for just crds or no native objs (or writing self)
+- openapi structs have all the things but pretty heavy dep
+- if you wanna write a subset of structs (memory, or less deps) you can..
+
+---
+<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+Putting it together - extra crates
+
+<ul>
+  <li class="fragment">prometheus / actix_web_prom</li>
+  <li class="fragment">env_logger / femme</li>
+  <li class="fragment">sentry / sentry_actix <small>([sentry-rust#143](https://github.com/getsentry/sentry-rust/issues/143))</small></li>
+</li>
+
+notes:
+- custom metrics => prometheus library, actix transform for no mesh
+- actix_web_prom does basic latency metrics in two lines (.wrap)
+- env_logger (precise drilling), femme (new) can switch between json and pretty easily
+- sentry actix integration, 2 lines, panic handler + middleware (unf. broken in actix 1.0)
+
+---
+<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+Examples
+
+<ul>
+  <li class="fragment">[kube-rs/examples](https://github.com/clux/kube-rs/tree/master/examples)</li>
+  <li class="fragment">[controllers-rs](https://github.com/clux/controller-rs)</li>
+  <li class="fragment">[version-rs](https://github.com/clux/version-rs)</li>
+</li>
+
+notes:
+- kube ex for reflectors, informer, basics + api usage
+- controller-rs for a 3 file actix setup with informers
+- version-rs for a 100 line watcher with actix and metrics
+
+---
+<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+why make your own controller
+
+breather slide...
+
+notes:
+- kube has 100 of them and they all reconcile the state
+- a controller can keep track of state in status, and work towards reconciling
+- its a nicer model than config management monorepo (for things that fit the cluster model)
+- old model: having N CI jobs per cluster, triggering them periodically, implementing diffing (do i need to do something) yourself, reconcile state in the job
+- new model: write one tiny app, in a way that's meant to deal with events, deploy it to all clusters
+
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
 
-
-
----
-<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
-
----
-<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
-
----
-<!-- .slide: data-background-image="./applause.gif" data-background-size="100% auto" class="color"-->
+notes:
+- Disclaimers, rust kube requires some knowledge, and stuff is kind of beta atm
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
