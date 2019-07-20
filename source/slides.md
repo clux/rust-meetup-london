@@ -38,9 +38,8 @@ notes:
 - not tricky because no official support...
 - official mstage images, travis official support, circleci docker.. BUT
 
-- docker in ci => nothing given to you
-- caching? build times big downside
-- circle has better way to split out docker cmd requiring builds
+- travis -> off supp outside docker, caching
+- circle docker vs non-docker cmds
 - circle examples (even if super error-prone, quirky yaml)
 
 
@@ -112,11 +111,8 @@ ENTRYPOINT ["/app/controller"]
 notes:
 - always pin your deps (otherwise why even lockfile)
 - dont apk upgrade (3.9 tag updates should receive security upgrades)
-- ca-certs if you need ssl/rusttls (if you have a service mesh, you might not)
-- but might need to install anyway for non-http conn (ssl postgres -> psql with --with-openssl)
-- import certs from aws to use secure ssl rds
-- rest is just like scratch
-- static compilation so (libc + ssl + psql linked into entrypoint)
+- ca-certs if you need tls (if you have a service mesh, you might not)
+- rest is just like scratch, copy prebuilt static binary
 - designed for one binary per container (otherwise you duplicate C deps within container)
 
 ---
@@ -129,10 +125,10 @@ cargo build --target=x86_64-unknown-linux-musl --release
 ```
 
 notes:
-- easiest locally, basic cross compilation support in rust already
-- might make travis nice, but this will fail with c deps
-- openssl big one (tho might be replaced by rusttls.. benches)
-- psql (or other sql client)
+- easiest locally, might work nice on travis
+- but C deps..
+- openssl big one (tho might be replaced by rustls.. benches)
+- psql (or other sql client (requires --with-openssl build)
 - curl (but not needed anymore due to hyper)
 - zlib (serving anything gzipped, but miniz.h works)
 - other library that has C bindings (that's not self-contained in -sys crate)
@@ -295,8 +291,8 @@ let cfg = kube::config::incluster_config().or_else(|_| {
 let client = kube::client::APIClient::new(cfg)?;
 ```
 
-TODO: test
-[..impersonate locally](https://clux.github.io/probes/post/2019-03-31-impersonating-kube-accounts/)
+<p class="fragment">..[..impersonate locally](https://clux.github.io/probes/post/2019-03-31-impersonating-kube-accounts/)</p>
+TODO: merge eks
 
 notes:
 - switch for local dev (cargo run)
@@ -311,7 +307,7 @@ let pods = Api::v1Pod(client).within("default");
 let blog = pods.get("blog")?;
 println!("blog has containers: {:?}", blog.spec.containers);
 
-for p in pods.list(&ListParams::default())? {
+for p in pods.list(&ListParams::default())?.items {
     println!("found pod", p.name);
     pods.delete(p.name)?;
 }
@@ -321,36 +317,31 @@ for p in pods.list(&ListParams::default())? {
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
 Under the hood
 
-TODO: replace with image!
 ```rust
 impl<K> Api<K> where
     K: Clone + DeserializeOwned + KubeObject
 {
-  fn get(&self, name: &str)
-    -> Result<K>;
-  fn create(&self, pp: &PostParams, data: Vec<u8>)
-    -> Result<K>;
-  fn patch(&self, name: &str, pp: &PostParams, patch: Vec<u8>)
-    -> Result<K>;
-  fn replace(&self, name: &str, pp: &PostParams, data: Vec<u8>)
-    -> Result<K>;
-  fn watch(&self, lp: &ListParams, version: &str)
+  fn get(&self, name: &str) -> Result<K>;
+  fn create(&self, data: Vec<u8>) -> Result<K>;
+  fn patch(&self, name: &str, patch: Vec<u8>) -> Result<K>;
+  fn replace(&self, name: &str, data: Vec<u8>) -> Result<K>;
+    ```
+  ```rust
+  fn list(&self) -> Result<ObjectList<K>>;
+  fn watch(&self, version: &str)
     -> Result<Vec<WatchEvent<P, U>>>;
-  fn list(&self, lp: &ListParams)
-    -> Result<ObjectList<K>>;
-  fn delete_collection(&self, lp: &ListParams)
+  fn delete_collection(&self)
     -> Result<Either<ObjectList<K>, Status>>;
-  fn delete(&self, name: &str, dp: &DeleteParams)
+  fn delete(&self, name: &str)
     -> Result<Either<K, Status>>;
-
-  fn get_status(&self, name: &str)
-    -> Result<K>;
-  fn patch_status(&self, name: &str, pp: &PostParams, patch: Vec<u8>)
-      ->Result<K>;
-  fn replace_status(&self, name: &str, pp: &PostParams, data: Vec<u8>)
-      -> Result<K>;
 }
 ```
+
+notes:
+- can treat each KubeObject generically - following kube apimachinery assumptions
+- slightly simplified signatures (Params object for all but get)
+- hidden subresources like get_scale, replace_status, done most core objs
+- if any missing, only need 5 lines in kube, PRs guide (client-go==80k, 20x our)
 
 ---
 <!-- .slide: data-background-color="#353535" -->
@@ -367,6 +358,7 @@ let o = foos.create(&pp, serde_json::to_vec(&f)?)?;
 assert_eq!(f["metadata"]["name"], o.metadata.name)
 ```
 notes:
+- quick to spec out stuff
 - kube crate (there's 3, this is _the one_ that tries to do a simplified api and higher level concepts)
 
 ---
@@ -384,6 +376,25 @@ assert_eq!(o.spec.name, "baz");
 ```
 
 notes:
+- patching great for partially modifying an object
+- patching in controlles for separating concerns
+- controllers can own different part of .status (one writer for each field)
+
+---
+<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+Controller scope
+
+<ul>
+  <li class="fragment">[Kubernetes Control Plane for Busy People Who Like Pictures](https://www.youtube.com/watch?v=zCXiXKMqnuE)</li>
+  <li class="fragment">[Writing Kubernetes Controllers for CRDs](https://www.youtube.com/watch?v=7wdUa4Ulwxg)</li>
+  <li class="fragment">[CNCF youtube](https://www.youtube.com/channel/UCvqbFHwN-nwalWPjPUKpvTA)</li>
+</li>
+
+notes:
+- limiting my talk to rust stuff, assuming some CRD familiarity here.. BUT:
+- busy people: all controllers, great 4 learning kube + ctrl scope KCon2019
+- Writing Controllers for CRDs (doing it in go, shows what a ballache it is)
+- CNC
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
