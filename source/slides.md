@@ -13,16 +13,17 @@
 
 NOTES:
 - Hi. Eirik. Platform, lot of things related to kube and rust.
-- Writing kube controllers, and extending the kubernetes API with your own CRs
-- but first, little basics on image lifecycle management (little on it in rust)
-- => testing, building, and pushing dockerised rust apps
+- Writing kube controllers (app managing resources in kube), and extending the kubernetes API with your own CRs, and writing controllers for that.
+- but first some operational basic, managing microsvcs in rust
 
 ---
 <!-- .slide: data-background-image="./fry-safety.webp" data-background-size="100% auto" class="color"-->
 
 notes:
-- safety dance: ez coz language: lockfiles default, build system (adv over go)
-- but dockerising, slightly tricky
+- safety dance when developing in new lang:
+- lockfiles, pin deps, run tests, lint
+- ez coz: build system
+- BUT dockerising, slightly tricky
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
@@ -113,7 +114,6 @@ notes:
 - dont apk upgrade (3.9 tag updates should receive security upgrades)
 - ca-certs if you need tls (if you have a service mesh, you might not)
 - rest is just like scratch, copy prebuilt static binary
-- designed for one binary per container (otherwise you duplicate C deps within container)
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
@@ -145,12 +145,11 @@ docker run --rm \
 ```
 
 notes:
+- curl, openssl, psql, zlib, sqlite
 - one of 3-4 big musl build images (this is the only one that builds continually and makes descriptive tags), 2M dls
 - push like 20GB a month from travis for free for this
 - bump stable every 6w, and script to auto-bump deps
 - my image, so you may want to fork it in a company.. really rust should support it (but no feedback on that)
-- (curl, openssl, psql, zlib, sqlite)
-- there are more general cross compile (cross, xargo, embedded), but for cloud: musl 64 bit linux FTW.
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
@@ -178,8 +177,8 @@ ci flow
 ```
 
 notes:
-- 1. stashes musl binary, 2. attaches it from prev (so super quick)
-- 2. master only (maybe tag only)
+- 1 stashes musl binary, 2 attaches it from prev (so super quick)
+- 2 master only (maybe tag only)
 - releasing for cli bins (may do multiple release builds)
 - what is multistage except removing that possibility for a tiny encapulation win?
 
@@ -210,9 +209,9 @@ caching (circleci)
 [cargo#5026](https://github.com/rust-lang/cargo/issues/5026)
 
 notes:
-- {TRIPLE} = `x86_64-unknown-linux-musl`
 - minimal circle steps with caching
 - caches two things: registry (DOWNLOADING CRATE), target (COMPILING CRATE)
+- {TRIPLE} = `x86_64-unknown-linux-musl`
 - additive unbounded; add evar, cargo clean, or base cache on sha(lockfile)
 - sha(lockfile) is inefficient depending on release cadence
 - cargo clean bug, cargo sweep
@@ -282,7 +281,7 @@ notes:
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
-Connecting to kubernetes api
+Using kube
 
 ```rust
 let cfg = kube::config::incluster_config().or_else(|_| {
@@ -295,8 +294,10 @@ let client = kube::client::APIClient::new(cfg)?;
 TODO: merge eks
 
 notes:
-- switch for local dev (cargo run)
+- kube crate (there's 3, this is _the one_ that tries to do a simplified api and higher level concepts)
+- LOADING CONFIG: auto injected in-cluster SA, or config
 - local dev might not work if you have auth hooks or oidc providers (can impersonate)
+- BUT ONCE YOU HAVE A CLIENT, YOU CAN
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
@@ -312,6 +313,30 @@ for p in pods.list(&ListParams::default())?.items {
     pods.delete(p.name)?;
 }
 ```
+
+notes:
+- create one of the variants of the generic Api object
+- can do all the things
+- mirrors client-go (but 20x smaller, 80k vs 5k)
+- 5 lines per native obj, group/api/version + struct maps
+
+---
+<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+Using the kube api
+
+```rust
+let f = json!({
+    "apiVersion": "clux.dev/v1",
+    "kind": "Foo",
+    "metadata": { "name": "baz" },
+    "spec": { "name": "baz", "info": "baz info" },
+});
+let o = foos.create(&pp, serde_json::to_vec(&f)?)?;
+assert_eq!(f["metadata"]["name"], o.metadata.name)
+```
+notes:
+- quick spec with serde json!
+- attach objs to parts of it
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
@@ -340,32 +365,14 @@ impl<K> Api<K> where
 notes:
 - can treat each KubeObject generically - following kube apimachinery assumptions
 - slightly simplified signatures (Params object for all but get)
-- delete either (like 201 created)
 - hidden subresources like get_scale, replace_status, done most core objs
-- if any missing, only need 5 lines in kube, PRs guide (client-go==80k, 20x our)
-
----
-<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
-Using the kubernetes api
-
-```rust
-let f = json!({
-    "apiVersion": "clux.dev/v1",
-    "kind": "Foo",
-    "metadata": { "name": "baz" },
-    "spec": { "name": "baz", "info": "baz info" },
-});
-let o = foos.create(&pp, serde_json::to_vec(&f)?)?;
-assert_eq!(f["metadata"]["name"], o.metadata.name)
-```
-notes:
-- quick to spec out stuff
-- kube crate (there's 3, this is _the one_ that tries to do a simplified api and higher level concepts)
+- delete either (like 201 created)
+- some special verbs missing (drain on nodes, logs on pods)
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
 
-Using the kubernetes api post/patch
+Using patch
 
 ```rust
 let patch = json!({
@@ -380,6 +387,25 @@ notes:
 - patching great for partially modifying an object
 - patching in controlles for separating concerns
 - controllers can own different part of .status (one writer for each field)
+
+---
+<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+
+why write a controller?
+
+<ul>
+<li class="fragment">separation of concerns</li>
+<li class="fragment">distributed, self-healing systems</li>
+<li class="fragment"><em>not writing a monolith</em></li>
+</ul>
+notes:
+- one resource deals with one type of event (beats cm monorepo that grow and intermingle, a controller CANT reach out by RBAC)
+- reconciliation loops running constantly can help you respond to errors in a system faster than 
+- why you? you should have an answer to this yourself.
+- if no answer? well, hope you enjoy the rust...
+
+- old model: having N CI jobs per cluster, triggering them periodically, implementing diffing (do i need to do something) yourself, reconcile state in the job
+- new model: write one tiny app, in a way that's meant to deal with events, deploy it to all clusters
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
@@ -700,31 +726,14 @@ Examples
 
 notes:
 - kube ex for reflectors, informer, basics + api usage
-- controller-rs for a 3 file actix setup with informers
-- version-rs for a 100 line watcher with actix and metrics
-
----
-<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
-why make your own controller
-
-TODO: breather slide...
-
-notes:
-- kube has 100 of them and they all reconcile the state
-- a controller can keep track of state in status, and work towards reconciling
-- its a nicer model than config management monorepo (for things that fit the cluster model)
-- old model: having N CI jobs per cluster, triggering them periodically, implementing diffing (do i need to do something) yourself, reconcile state in the job
-- new model: write one tiny app, in a way that's meant to deal with events, deploy it to all clusters
-
+- controller-rs for a 3 file actix setup with informers, prometheus
+- version-rs for a 100 line watcher with actix and metrics, actix prom
 
 ---
 <!-- .slide: data-background-image="./zoid-no.webp" data-background-size="100% auto" class="color"-->
 
----
-<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
-
 notes:
-- Disclaimers, rust kube requires some knowledge, and stuff is kind of beta atm
+- battered
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
