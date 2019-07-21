@@ -281,6 +281,27 @@ notes:
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+kube crate
+
+```toml
+kube = "0.11.0"
+```
+
+```toml
+kube = { version = "0.11.0", features = ["openapi"] }
+k8s-openapi = { version = "0.4.0", features = ["v1_13"] }
+```
+
+notes:
+- kube crate (there's 3, this is _the one_ that tries to do a simplified api and higher level concepts)
+- either plain, great for just crds or no native objs (or writing self)
+- openapi structs have all the things but pretty heavy dep
+- if you wanna write a subset of structs (memory, or less deps) you can..
+
+
+
+---
+<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
 Using kube
 
 ```rust
@@ -294,7 +315,6 @@ let client = kube::client::APIClient::new(cfg)?;
 TODO: merge eks
 
 notes:
-- kube crate (there's 3, this is _the one_ that tries to do a simplified api and higher level concepts)
 - LOADING CONFIG: auto injected in-cluster SA, or config
 - local dev might not work if you have auth hooks or oidc providers (can impersonate)
 - BUT ONCE YOU HAVE A CLIENT, YOU CAN
@@ -679,24 +699,6 @@ fn health(_: HttpRequest) -> HttpResponse {
     HttpResponse::Ok().json("healthy")
 }
 ```
-
----
-<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
-Putting it together - dependencies
-
-```toml
-kube = "0.11.0"
-```
-
-```toml
-kube = { version = "0.11.0", features = ["openapi"] }
-k8s-openapi = { version = "0.4.0", features = ["v1_13"] }
-```
-
-notes:
-- either plain, great for just crds or no native objs (or writing self)
-- openapi structs have all the things but pretty heavy dep
-- if you wanna write a subset of structs (memory, or less deps) you can..
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
