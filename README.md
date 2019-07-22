@@ -6,7 +6,7 @@ https://www.meetup.com/Rust-London-User-Group/events/262999277/
 
 ```sh
 npm i -g reveal-md
-reveal-md slides.md
+reveal-md source/slides.md
 ```
 
 or just browse the github pages.

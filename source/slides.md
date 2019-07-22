@@ -12,9 +12,9 @@
 <img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 300px; left: 560px" />
 
 NOTES:
-- Hi. Eirik. Platform, lot of things related to kube and rust.
-- Writing kube controllers (app managing resources in kube), and extending the kubernetes API with your own CRs, and writing controllers for that.
-- but first some operational problems, managing microsvcs in rust
+- Hi. Eirik / clux online. 4y ruster. Platform 4 bab. Also do rust.
+- Talk: Writing kube ctrl (app managing resources in kube), extending the k8s API with your own CRs, and writing controllers for that. all in rust.
+- 1ST: some operational decision need to make, when creating and manging microsvcs in rust
 
 ---
 <!-- .slide: data-background-image="./fry-safety.webp" data-background-size="100% auto" class="color"-->
@@ -23,6 +23,7 @@ notes:
 - safety dance when developing in new lang:
 - lockfiles, pin deps, run tests, lint
 - ez coz: build system
+- ez to justify from cost perspective as well (vs java)
 - BUT dockerising, slightly tricky
 
 ---
@@ -31,16 +32,16 @@ docker
 
 <ul>
   <li class="fragment">[FROM rust:1.36-stretch](https://hub.docker.com/_/rust)</li>
-  <li class="fragment">[travis-ci/languages/rust](https://docs.travis-ci.com/user/languages/rust/)</li>
   <li class="fragment">[circleci docker builds](https://circleci.com/docs/2.0/building-docker-images/)
+  <li class="fragment">[travis-ci/languages/rust](https://docs.travis-ci.com/user/languages/rust/)</li>
 </li>
 
 notes:
 - not tricky because no official support...
-- official mstage images, travis official support, circleci docker
-- travis -> off supp outside docker, caching
-- circle docker vs non-docker cmds
-- USING circle (even if super error-prone, quirky yaml), generic guidelines
+- official mstage images, debian, docs..
+- circle docker vs non-docker cmds (while no rust)
+- travis off rust supp outside docker, caching
+- USING circle (even if cfg == error-prone, quirky yaml), generic guidelines
 
 
 ---
@@ -68,8 +69,8 @@ notes:
 <img src="./distroless.png" style="float: left; background: none; box-shadow: none; border: none; position: absolute; left: 0px" />
 
 notes:
-- ubuntu vs alpine vs distroless:static
-- least privilege principle (sensible argument)
+- debian/ub vs alpine vs distroless:static
+- least privilege principle (sensible argument) => no deb
 - last 2 => compile for musl (libc that lets you compile static)
 - reuseable on all distros (not true other way)
 - benchmark / speed argument of libc choice (contradictory, measure)
@@ -89,8 +90,7 @@ notes:
 - fewer code paths, less glibc legacy, but more edge cases (locales, glibc specifics)
 - busybox: single binary version 300 linux tools - coreutils replace
 - together: alpine; 5MB linux distro
-- don't pick scratch, 5MB small price to pay for bash and a working package manager
-- don't pick ubuntu unless you need to (order of magnitude more disk space)
+- scratch: no certs management
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
@@ -125,11 +125,8 @@ cargo build --target=x86_64-unknown-linux-musl --release
 notes:
 - easiest locally, might work nice on travis
 - but C deps..
-- openssl big one (tho might be replaced by rustls.. benches)
-- psql (or other sql client (requires --with-openssl build)
-- curl (but not needed anymore due to hyper)
-- zlib (serving anything gzipped, but miniz.h works)
-- other library that has C bindings (that's not self-contained in -sys crate)
+- openssl big one (might be replaced by rustls.. BUT)
+- psql (requires --with-openssl build)
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
@@ -143,7 +140,7 @@ docker run --rm \
 ```
 
 notes:
-- curl, openssl, psql, zlib, sqlite
+- curl, openssl, psql, zlib, sqlite (most frequent deps)
 - one of 3-4 big musl build images (this is the only one that builds continually and makes descriptive tags), 2M dls
 - push like 20GB a month from travis for free for this
 - bump stable every 6w, and script to auto-bump deps
@@ -279,21 +276,24 @@ notes:
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
-kube crate
+[kube crate](https://crates.io/crates/kube)
 
+<li>minimal:</li>
 ```toml
-kube = "0.11.0"
+[dependencies]
+kube = "0.12.0"
 ```
-
+<li>with openapi structs:</li>
 ```toml
-kube = { version = "0.11.0", features = ["openapi"] }
+[dependencies]
+kube = { version = "0.12.0", features = ["openapi"] }
 k8s-openapi = { version = "0.4.0", features = ["v1_13"] }
 ```
 
 notes:
 - kube crate (there's 3, this is _the one_ that tries to do a simplified api and higher level concepts)
-- either plain, great for just crds or no native objs (or writing self)
-- openapi structs have all the things but pretty heavy dep
+- minimal; great for just crds or no native objs (or writing self)
+- full openapi generated structs from api, but pretty heavy dep
 - if you wanna write a subset of structs (memory, or less deps) you can..
 
 
@@ -335,8 +335,9 @@ for p in pods.list(&ListParams::default())?.items {
 notes:
 - create one of the variants of the generic Api object
 - can do all the things
-- mirrors client-go (but 20x smaller, 80k vs 5k)
 - 5 lines per native obj, group/api/version + struct maps
+- mirrors client-go (but 20x smaller, 80k vs 4k)
+- less features, but not 20x! no self-queue impl...
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
@@ -384,8 +385,8 @@ notes:
 - can treat each KubeObject generically - following kube apimachinery assumptions
 - slightly simplified signatures (Params object for all but get)
 - hidden subresources like get_scale, replace_status, done most core objs
-- delete either (like 201 created)
 - some special verbs missing (drain on nodes, logs on pods)
+- delete either (Left==201 created, Right==200)
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
@@ -409,21 +410,18 @@ notes:
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
 
-why write a controller?
+why write a controller for my resource?
 
 <ul>
-<li class="fragment">separation of concerns</li>
+<li class="fragment">[Should I add my Custom Resource to the cluster?](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/#should-i-add-a-custom-resource-to-my-kubernetes-cluster)</li>
 <li class="fragment">distributed, self-healing systems</li>
-<li class="fragment"><em>not writing a monolith</em></li>
+<li class="fragment">separation of concerns</li>
 </ul>
 notes:
-- one resource deals with one type of event (beats cm monorepo that grow and intermingle, a controller CANT reach out by RBAC)
-- reconciliation loops running constantly can help you respond to errors in a system faster than 
-- why you? you should have an answer to this yourself.
-- if no answer? well, hope you enjoy the rust...
-
-- old model: having N CI jobs per cluster, triggering them periodically, implementing diffing (do i need to do something) yourself, reconcile state in the job
-- new model: write one tiny app, in a way that's meant to deal with events, deploy it to all clusters
+- should you? if no answer: read this on k8s io docs..
+- philosophical distictions that only matter for large distributed systems.
+- reconciliation loops running constantly and more efficiently can help you auto-heal faster
+- sep concerns: force your app to only deal with on resource by rbac (like a rust ritual) better in long run
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
@@ -501,8 +499,8 @@ match ev { // ev : WatchEvent<Pod>
 notes:
 - go you attach event handlers to the informers
 - rust we drain an internal queue and get events moved to us
+- error watch event: bookmark limitation (retry once -> teardown, or impl backoff)
 - o is complete object (Pod object here)
-- error watch event: bookmark
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
@@ -580,6 +578,7 @@ spec:
 notes:
 - pass some initial yaml to kube api server, ~20 lines generally
 - formality; can be lax, can define openapi schema.
+- would be nice to derive openapi schema...
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
@@ -611,7 +610,7 @@ notes:
 - can make informers + reflectors on them
 - from there you can basically just start handling events
 - and ensuring that you can reconcile changes
-- but something needs to drive it...
+- Now. something needs to drive it...
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
