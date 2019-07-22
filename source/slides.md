@@ -14,7 +14,7 @@
 NOTES:
 - Hi. Eirik. Platform, lot of things related to kube and rust.
 - Writing kube controllers (app managing resources in kube), and extending the kubernetes API with your own CRs, and writing controllers for that.
-- but first some operational basic, managing microsvcs in rust
+- but first some operational problems, managing microsvcs in rust
 
 ---
 <!-- .slide: data-background-image="./fry-safety.webp" data-background-size="100% auto" class="color"-->
@@ -37,11 +37,10 @@ docker
 
 notes:
 - not tricky because no official support...
-- official mstage images, travis official support, circleci docker.. BUT
-
+- official mstage images, travis official support, circleci docker
 - travis -> off supp outside docker, caching
 - circle docker vs non-docker cmds
-- circle examples (even if super error-prone, quirky yaml)
+- USING circle (even if super error-prone, quirky yaml), generic guidelines
 
 
 ---
@@ -55,7 +54,7 @@ caching
 </ul>
 
 notes:
-- motivation: rust sizes.. 10min build vs 30s build
+- motivation: rust sizes.. 10min build vs 10s build
 - docker build: closed issue on caching build dir (rabbit hole link)
 - multistage: same issue
 - buildkit: better replacement in future
@@ -71,11 +70,9 @@ notes:
 notes:
 - ubuntu vs alpine vs distroless:static
 - least privilege principle (sensible argument)
-- benchmark / speed argument of libc choice (contradictory, measure)
-- last 2 => compile for musl
-- musl-libc is an 8yo libc inmpl (smaller than glibc, static link, more performant (some benchmarks 10-30% but bench)
+- last 2 => compile for musl (libc that lets you compile static)
 - reuseable on all distros (not true other way)
-
+- benchmark / speed argument of libc choice (contradictory, measure)
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
@@ -88,7 +85,8 @@ alpine
 </li>
 
 notes:
-- fewer code paths, less of the specific glibc legacy, but more edge cases (locales, glibc specifics)
+- musl-libc is an 8yo libc impl
+- fewer code paths, less glibc legacy, but more edge cases (locales, glibc specifics)
 - busybox: single binary version 300 linux tools - coreutils replace
 - together: alpine; 5MB linux distro
 - don't pick scratch, 5MB small price to pay for bash and a working package manager
@@ -475,9 +473,9 @@ notes:
 - Informer: lets you handle raw events as they come in
 - Use case: make changes to it/other resources when events occur (controller pattern)
 - Reflector: maintains an in memory cache of all Ks
-- Updates when it polls, with a RwLock, and lets you read whenever.
 - Use case: monitoring a resource, presenting an api around many resources..
 - (Can build a Ref from an Inf by just using events to update a local Map).
+- Both: updates when it polls, with a RwLock, and lets you read whenever.
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
@@ -524,6 +522,7 @@ pub struct Object<T, U> where T: Clone, U: Clone
 ```
 
 notes:
+- need to know when creating a CRD (also helps kube underst)
 - each object composed of spec (what you want) and status (what it is)
 - crucially, kube lets you extend the api as long as you define T and optionally, U
 
@@ -687,6 +686,10 @@ fn main() {
 }
 ```
 
+notes:
+- load cfg, init a watcher (not shown here), basically, instantiate watcher + spawn that thread i said
+- pass watcher to actix app as Data
+
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
 Putting it together - routes
@@ -699,6 +702,11 @@ fn health(_: HttpRequest) -> HttpResponse {
     HttpResponse::Ok().json("healthy")
 }
 ```
+
+notes:
+- health pattern matches data away, index uses the watcher
+- (you need a getter in Watcher)
+- NOT GOING to go more tiny details, leave you with some crates
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
@@ -728,8 +736,8 @@ Examples
 
 notes:
 - kube ex for reflectors, informer, basics + api usage
+- version-rs for a 100 line watcher with actix and metrics, actix_prom
 - controller-rs for a 3 file actix setup with informers, prometheus
-- version-rs for a 100 line watcher with actix and metrics, actix prom
 
 ---
 <!-- .slide: data-background-image="./zoid-no.webp" data-background-size="100% auto" class="color"-->
@@ -743,8 +751,8 @@ notes:
 - Eirik - [github.com/clux](https://github.com/clux) - [clux.dev](https://clux.dev)
 - Babylon Health - [babylonhealth.com](https://babylonhealth.com)
 
-<img src="./babylon.png" style="border: 0px; width: 120px; position: absolute; top: 300px; left: 0px" />
-<img src="./babylon.png" style="border: 0px; width: 120px; position: absolute; top: 300px; left: 140px" />
-<img src="./babylon.png" style="border: 0px; width: 120px; position: absolute; top: 300px; left: 280px" />
-<img src="./babylon.png" style="border: 0px; width: 120px; position: absolute; top: 300px; left: 420px" />
-<img src="./babylon.png" style="border: 0px; width: 120px; position: absolute; top: 300px; left: 560px" />
+<img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 150px; left: 0px" />
+<img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 150px; left: 140px" />
+<img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 150px; left: 280px" />
+<img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 150px; left: 420px" />
+<img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 150px; left: 560px" />
