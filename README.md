@@ -14,7 +14,7 @@ or just browse the github pages.
 ## Building
 
 ```sh
-reveal-md source/slides.md --static docs --static-dirs=source --absolute-url https://clux.github.io/rust-meetup-london/
+reveal-md source/slides.md --static docs --static-dirs=source --assets-dir=source --absolute-url https://clux.github.io/rust-meetup-london/
 ```
 
 Ensure all urls are relative (i.e. start with ./)
