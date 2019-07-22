@@ -1,0 +1,793 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+        <title>reveal-md</title>
+          <meta property="og:title" content="reveal-md">
+          <meta property="og:type" content="website">
+          <meta property="og:image" content="https://clux.github.io/facebook-devops-shipcat//featured-slide.jpg">
+          <meta property="og:url" content="https://clux.github.io/facebook-devops-shipcat/">
+        <link rel="stylesheet" href="./css/reveal.css">
+        <link rel="stylesheet" href="./css/theme/black.css" id="theme">
+        <link rel="stylesheet" href="./css/highlight/zenburn.css">
+        <link rel="stylesheet" href="./css/print/paper.css" type="text/css" media="print">
+
+
+    </head>
+    <body>
+
+        <div class="reveal">
+            <div class="slides"><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+
+### Rust on kubernetes
+
+- Eirik Albrigtsen : [github.com/clux](https://github.com/clux) - [clux.dev](https://clux.dev)
+- Babylon Health : [github.com/Babylonpartners](https://github.com/Babylonpartners)
+
+<img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 300px; left: 0px" />
+<img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 300px; left: 140px" />
+<img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 300px; left: 280px" />
+<img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 300px; left: 420px" />
+<img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 300px; left: 560px" />
+
+<aside class="notes"><ul>
+<li>Hi. Eirik. Platform, lot of things related to kube and rust.</li>
+<li>Writing kube controllers (app managing resources in kube), and extending the kubernetes API with your own CRs, and writing controllers for that.</li>
+<li>but first some operational problems, managing microsvcs in rust</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-image="./fry-safety.webp" data-background-size="100% auto" class="color"-->
+
+<aside class="notes"><ul>
+<li>safety dance when developing in new lang:</li>
+<li>lockfiles, pin deps, run tests, lint</li>
+<li>ez coz: build system</li>
+<li>BUT dockerising, slightly tricky</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+docker
+
+<ul>
+  <li class="fragment">[FROM rust:1.36-stretch](https://hub.docker.com/_/rust)</li>
+  <li class="fragment">[travis-ci/languages/rust](https://docs.travis-ci.com/user/languages/rust/)</li>
+  <li class="fragment">[circleci docker builds](https://circleci.com/docs/2.0/building-docker-images/)
+</li>
+
+<aside class="notes"><ul>
+<li>not tricky because no official support...</li>
+<li>official mstage images, travis official support, circleci docker</li>
+<li>travis -&gt; off supp outside docker, caching</li>
+<li>circle docker vs non-docker cmds</li>
+<li>USING circle (even if super error-prone, quirky yaml), generic guidelines</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+caching
+
+<ul>
+<li class="fragment">1GB cache for 10MB artifact</li>
+<li class="fragment">[docker build does not support cached input](https://github.com/moby/moby/issues/7665)</li>
+<li class="fragment">[circleci buildkit support](https://ideas.circleci.com/ideas/CCI-I-1003) - [buildkit orb](https://circleci.com/orbs/registry/orb/springload/buildkit)</li>
+</ul>
+
+<aside class="notes"><ul>
+<li>motivation: rust sizes.. 10min build vs 10s build</li>
+<li>docker build: closed issue on caching build dir (rabbit hole link)</li>
+<li>multistage: same issue</li>
+<li>buildkit: better replacement in future</li>
+<li>=&gt; docker run with volume mount and caching the directory</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-image="./zoid-speed.webp" data-background-size="100% auto" class="color"-->
+
+<img src="./gnu.png" style="float: left; background: none; box-shadow: none; border: none; position: absolute; right: 0px" />
+<img src="./alpine.png" style="float: left; filter: brightness(2); background: none; box-shadow: none; border: none; position: absolute;" />
+<img src="./distroless.png" style="float: left; background: none; box-shadow: none; border: none; position: absolute; left: 0px" />
+
+<aside class="notes"><ul>
+<li>ubuntu vs alpine vs distroless:static</li>
+<li>least privilege principle (sensible argument)</li>
+<li>last 2 =&gt; compile for musl (libc that lets you compile static)</li>
+<li>reuseable on all distros (not true other way)</li>
+<li>benchmark / speed argument of libc choice (contradictory, measure)</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+
+alpine
+
+<ul>
+  <li class="fragment"><a href="https://www.musl-libc.org/intro.html">musl-libc</a></li>
+  <li class="fragment"><a href="https://busybox.net/downloads/BusyBox.html#commands">busybox</a></li>
+</li>
+
+<aside class="notes"><ul>
+<li>musl-libc is an 8yo libc impl</li>
+<li>fewer code paths, less glibc legacy, but more edge cases (locales, glibc specifics)</li>
+<li>busybox: single binary version 300 linux tools - coreutils replace</li>
+<li>together: alpine; 5MB linux distro</li>
+<li>don&#39;t pick scratch, 5MB small price to pay for bash and a working package manager</li>
+<li>don&#39;t pick ubuntu unless you need to (order of magnitude more disk space)</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+alpine based image
+
+```dockerfile
+FROM alpine:3.9
+RUN apk --no-cache add ca-certificates && \
+    adduser usr -Du 1000 -h /app
+COPY --chown=usr:usr ./controller /app/
+EXPOSE 8080
+USER usr
+WORKDIR /app
+ENTRYPOINT ["/app/controller"]
+```
+
+<aside class="notes"><ul>
+<li>always pin your deps (otherwise why even lockfile)</li>
+<li>dont apk upgrade (3.9 tag updates should receive security upgrades)</li>
+<li>ca-certs if you need tls (if you have a service mesh, you might not)</li>
+<li>rest is just like scratch, copy prebuilt static binary</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+compiling for musl (pure rust)
+
+```sh
+rustup target add x86_64-unknown-linux-musl
+cargo build --target=x86_64-unknown-linux-musl --release
+```
+
+<aside class="notes"><ul>
+<li>easiest locally, might work nice on travis</li>
+<li>but C deps..</li>
+<li>openssl big one (tho might be replaced by rustls.. benches)</li>
+<li>psql (or other sql client (requires --with-openssl build)</li>
+<li>curl (but not needed anymore due to hyper)</li>
+<li>zlib (serving anything gzipped, but miniz.h works)</li>
+<li>other library that has C bindings (that&#39;s not self-contained in -sys crate)</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+compiling for musl (with C dependencies)
+
+```sh
+docker run --rm \
+  -v $PWD:/volume \
+  -t clux/muslrust:stable \
+  cargo build --release
+```
+
+<aside class="notes"><ul>
+<li>curl, openssl, psql, zlib, sqlite</li>
+<li>one of 3-4 big musl build images (this is the only one that builds continually and makes descriptive tags), 2M dls</li>
+<li>push like 20GB a month from travis for free for this</li>
+<li>bump stable every 6w, and script to auto-bump deps</li>
+<li>my image, so you may want to fork it in a company.. really rust should support it (but no feedback on that)</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+compiling for musl (with C dependencies)
+
+```sh
+docker run --rm \
+  -v $PWD:/volume \
+  -v cargo-cache:/root/.cargo/registry \
+  -t clux/muslrust:stable \
+  cargo build --release
+```
+<aside class="notes"><ul>
+<li>how to add a cache</li>
+<li>can also do .cargo/git</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template">ci flow
+
+```
+1. cargo test
+1. cargo build --release
+2. docker build && docker push
+2. github releases
+```
+
+<aside class="notes"><ul>
+<li>1 stashes musl binary, 2 attaches it from prev (so super quick)</li>
+<li>2 master only (maybe tag only)</li>
+<li>releasing for cli bins (may do multiple release builds)</li>
+<li>what is multistage except removing that possibility for a tiny encapulation win?</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template">caching (circleci)
+
+```yaml
+  musl_build:
+    docker: [ { image: clux/muslrust:stable-1.36.0 } ]
+    steps:
+      - checkout
+      - restore_cache: { keys: ["registry"] }
+      - restore_cache: { keys: ["target"] }
+      - run: cargo build --release
+```
+```yaml
+      - save_cache:
+          key: target
+          paths: ["target"]
+      - save_cache:
+          key: registry
+          paths: ["/root/.cargo"]
+      - run: mv target/MUSLTRIPLE/release/app{,.MUSLTRIPLE}
+      - persist_to_workspace:
+          root: target/MUSLTRIPLE/release/
+          paths: ["app.MUSLTRIPLE"]
+```
+[cargo#5026](https://github.com/rust-lang/cargo/issues/5026)
+
+<aside class="notes"><ul>
+<li>minimal circle steps with caching</li>
+<li>caches two things: registry (DOWNLOADING CRATE), target (COMPILING CRATE)</li>
+<li>{TRIPLE} = <code>x86_64-unknown-linux-musl</code></li>
+<li>additive unbounded; add evar, cargo clean, or base cache on sha(lockfile)</li>
+<li>sha(lockfile) is inefficient depending on release cadence</li>
+<li>cargo clean bug, cargo sweep</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template">flow (circleci)
+
+```yaml
+    jobs:
+      - cargo_test:
+          filters: { branches: { ignore: ["master"] } }
+      - mac_build:
+          filters:
+            tags: { only: /^.*/ }
+            branches: { only: ["master"] }
+      - musl_build:
+          filters: { tags: { only: /^.*/ } }
+```
+```yaml
+      - docker_build:
+          requires: ["musl_build"]
+          filters: { branches: { only: ["master"] } }
+      - github_release:
+          requires:
+            - musl_build
+            - mac_build
+          filters:
+            tags: { only: /^.*/ }
+            branches: { ignore: /.*/ }
+```
+
+<aside class="notes"><ul>
+<li>abbreviating awkward circle yaml 4general idea</li>
+<li>PR build from branch: (cargo test + musl build)</li>
+<li>master merge: (musl build + docker build)</li>
+<li>github release: (musl + mac build then docker build + github_release)</li>
+<li>test + build in musl? may as well.</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-image="./zoid-resignation.webp" data-background-size="100% auto" class="color"-->
+
+<aside class="notes"><ul>
+<li>lezz get our rust integrated with k8s</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+Kubernetes Deployment
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: foo-controller
+spec:
+  replicas: 2
+  template:
+    spec:
+      containers:
+      - name: foo-controller
+        image: "clux/controller:0.2.1"
+        imagePullPolicy: IfNotPresent
+```
+<p class="fragment">..[clux/controller-rs](https://github.com/clux/controller-rs)</p>
+
+<aside class="notes"><ul>
+<li>missing all the things: resource requests/limits, readinessProbe, evars, service account, ports, labels</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+kube crate
+
+```toml
+kube = "0.11.0"
+```
+
+```toml
+kube = { version = "0.11.0", features = ["openapi"] }
+k8s-openapi = { version = "0.4.0", features = ["v1_13"] }
+```
+
+<aside class="notes"><ul>
+<li>kube crate (there&#39;s 3, this is <em>the one</em> that tries to do a simplified api and higher level concepts)</li>
+<li>either plain, great for just crds or no native objs (or writing self)</li>
+<li>openapi structs have all the things but pretty heavy dep</li>
+<li>if you wanna write a subset of structs (memory, or less deps) you can..</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+Using kube
+
+```rust
+let cfg = kube::config::incluster_config().or_else(|_| {
+    kube::config::load_kube_config()
+}).expect("Failed to load kube config");
+let client = kube::client::APIClient::new(cfg)?;
+```
+
+<p class="fragment">..[..impersonate locally](https://clux.github.io/probes/post/2019-03-31-impersonating-kube-accounts/)</p>
+TODO: merge eks
+
+<aside class="notes"><ul>
+<li>LOADING CONFIG: auto injected in-cluster SA, or config</li>
+<li>local dev might not work if you have auth hooks or oidc providers (can impersonate)</li>
+<li>BUT ONCE YOU HAVE A CLIENT, YOU CAN</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+Using the kube api
+
+```rust
+let pods = Api::v1Pod(client).within("default");
+let blog = pods.get("blog")?;
+println!("blog has containers: {:?}", blog.spec.containers);
+
+for p in pods.list(&ListParams::default())?.items {
+    println!("found pod", p.name);
+    pods.delete(p.name)?;
+}
+```
+
+<aside class="notes"><ul>
+<li>create one of the variants of the generic Api object</li>
+<li>can do all the things</li>
+<li>mirrors client-go (but 20x smaller, 80k vs 5k)</li>
+<li>5 lines per native obj, group/api/version + struct maps</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+Using the kube api
+
+```rust
+let f = json!({
+    "apiVersion": "clux.dev/v1",
+    "kind": "Foo",
+    "metadata": { "name": "baz" },
+    "spec": { "name": "baz", "info": "baz info" },
+});
+let o = foos.create(&pp, serde_json::to_vec(&f)?)?;
+assert_eq!(f["metadata"]["name"], o.metadata.name)
+```
+<aside class="notes"><ul>
+<li>quick spec with serde json!</li>
+<li>attach objs to parts of it</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+Under the hood
+
+```rust
+impl<K> Api<K> where
+    K: Clone + DeserializeOwned + KubeObject
+{
+  fn get(&self, name: &str) -> Result<K>;
+  fn create(&self, data: Vec<u8>) -> Result<K>;
+  fn patch(&self, name: &str, patch: Vec<u8>) -> Result<K>;
+  fn replace(&self, name: &str, data: Vec<u8>) -> Result<K>;
+    ```
+  ```rust
+  fn list(&self) -> Result<ObjectList<K>>;
+  fn watch(&self, version: &str)
+    -> Result<Vec<WatchEvent<P, U>>>;
+  fn delete_collection(&self)
+    -> Result<Either<ObjectList<K>, Status>>;
+  fn delete(&self, name: &str)
+    -> Result<Either<K, Status>>;
+}
+```
+
+<aside class="notes"><ul>
+<li>can treat each KubeObject generically - following kube apimachinery assumptions</li>
+<li>slightly simplified signatures (Params object for all but get)</li>
+<li>hidden subresources like get_scale, replace_status, done most core objs</li>
+<li>delete either (like 201 created)</li>
+<li>some special verbs missing (drain on nodes, logs on pods)</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+
+Using patch
+
+```rust
+let patch = json!({
+    "spec": { "info": "patched baz" }
+});
+let o = foos.patch("baz", &pp, serde_json::to_vec(&patch)?)?;
+assert_eq!(o.spec.info, "patched baz");
+assert_eq!(o.spec.name, "baz");
+```
+
+<aside class="notes"><ul>
+<li>patching great for partially modifying an object</li>
+<li>patching in controlles for separating concerns</li>
+<li>controllers can own different part of .status (one writer for each field)</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+
+why write a controller?
+
+<ul>
+<li class="fragment">separation of concerns</li>
+<li class="fragment">distributed, self-healing systems</li>
+<li class="fragment"><em>not writing a monolith</em></li>
+</ul>
+<aside class="notes"><ul>
+<li>one resource deals with one type of event (beats cm monorepo that grow and intermingle, a controller CANT reach out by RBAC)</li>
+<li>reconciliation loops running constantly can help you respond to errors in a system faster than </li>
+<li>why you? you should have an answer to this yourself.</li>
+<li><p>if no answer? well, hope you enjoy the rust...</p>
+</li>
+<li><p>old model: having N CI jobs per cluster, triggering them periodically, implementing diffing (do i need to do something) yourself, reconcile state in the job</p>
+</li>
+<li>new model: write one tiny app, in a way that&#39;s meant to deal with events, deploy it to all clusters</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+Controller scope
+
+<ul>
+  <li class="fragment">[Kubernetes Control Plane for Busy People Who Like Pictures](https://www.youtube.com/watch?v=zCXiXKMqnuE)</li>
+  <li class="fragment">[Writing Kubernetes Controllers for CRDs](https://www.youtube.com/watch?v=7wdUa4Ulwxg)</li>
+  <li class="fragment">[Writing Kube Controllers for Everyone](https://www.youtube.com/watch?v=AUNPLQVxvmw)</li>
+  <li class="fragment">[CNCF youtube](https://www.youtube.com/channel/UCvqbFHwN-nwalWPjPUKpvTA)</li>
+</li>
+
+<aside class="notes"><ul>
+<li>limiting my talk to rust stuff, assuming some CRD familiarity here.. BUT:</li>
+<li>busy people: all controllers, great 4 learning kube + ctrl scope KCon2019</li>
+<li>Writing Controllers for CRDs (doing it in go, shows what a ballache it is)</li>
+<li>Last one, high level. Useful for knowing why controllers are what they are.</li>
+<li>CNCF channel has all kubecon videos</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+Controller patterns
+
+```basic
+10 WATCH CustomResource:
+     WHILE WatchEvent
+         RECONCILE(CustomResource, event)
+20 GOTO 10
+```
+
+<aside class="notes"><ul>
+<li>conceptually simple, all the meat should be in in REACTING to the events</li>
+<li>but to watch, you have to tell kube where to watch from</li>
+<li>a watch query always blocks for the given wait time, even if there are events</li>
+<li>with every return, you are told, where to resume from</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+Higher level abstractions
+
+<ul>
+  <li class="fragment">`Informer<K>` (event informer)</li>
+  <li class="fragment">`Reflector<K>` (in-memory cache)</li>
+</li>
+
+<aside class="notes"><ul>
+<li>Informer: lets you handle raw events as they come in</li>
+<li>Use case: make changes to it/other resources when events occur (controller pattern)</li>
+<li>Reflector: maintains an in memory cache of all Ks</li>
+<li>Use case: monitoring a resource, presenting an api around many resources..</li>
+<li>(Can build a Ref from an Inf by just using events to update a local Map).</li>
+<li>Both: updates when it polls, with a RwLock, and lets you read whenever.</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+Handling events via informers
+
+```rust
+match ev { // ev : WatchEvent<Pod>
+    WatchEvent::Added(o) => {
+        info!("Added Pod: {}", o.metadata.name);
+    },
+    WatchEvent::Modified(o) => {
+        info!("Modified Pod: {}", o.metadata.name);
+    },
+    WatchEvent::Deleted(o) => {
+        info!("Deleted Pod: {}", o.metadata.name);
+    },
+    WatchEvent::Error(e) => {
+        warn!("Error event: {:?}", e);
+    }
+}
+```
+
+<aside class="notes"><ul>
+<li>go you attach event handlers to the informers</li>
+<li>rust we drain an internal queue and get events moved to us</li>
+<li>o is complete object (Pod object here)</li>
+<li>error watch event: bookmark</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+what is an object
+
+```rust
+#[derive(Deserialize, Serialize, Clone)]
+pub struct Object<T, U> where T: Clone, U: Clone
+{
+  #[serde(flatten)]
+  pub types: TypeMeta,
+  pub metadata: ObjectMeta,
+  pub spec: T,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub status: Option<U>,
+}
+```
+
+<aside class="notes"><ul>
+<li>need to know when creating a CRD (also helps kube underst)</li>
+<li>each object composed of spec (what you want) and status (what it is)</li>
+<li>crucially, kube lets you extend the api as long as you define T and optionally, U</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+Custom Resources
+
+```rust
+use kube::api::Object;
+
+#[derive(Deserialize, Serialize, Clone)]
+pub struct FooSpec {
+    name: String,
+    info: String,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug, Default)]
+pub struct FooStatus {
+    isBad: bool,
+}
+
+type Foo = Object<FooSpec, FooStatus>;
+```
+
+<aside class="notes"><ul>
+<li>in go you need the external codegen for this, but in rust it&#39;s all generics</li>
+<li>write the struct, derive our traits</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+
+```yaml
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: foos.clux.dev
+spec:
+  group: clux.dev
+  names:
+    kind: Foo
+    listKind: FooList
+    plural: foos
+    singular: foo
+  scope: Namespaced
+```
+```yaml
+  version: v1
+  versions:
+  - name: v1
+    served: true
+    storage: true
+  subresources:
+    status: {}
+```
+<aside class="notes"><ul>
+<li>pass some initial yaml to kube api server, ~20 lines generally</li>
+<li>formality; can be lax, can define openapi schema.</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+Using the CRD api
+
+```rust
+let foos : Api<Foo> = Api::customResource(client, "foos")
+    .version("v1")
+    .group("clux.dev")
+    .within("default");
+
+let baz = foos.get("baz")?;
+assert_eq!(baz.spec.info, "baz info");
+```
+
+<aside class="notes"><ul>
+<li>just like native objects (but need to specify version + group (yours))</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+Using the CRD api
+
+```rust
+let inf = Informer::new(foos)
+    .timeout(15)
+    .init()?;
+```
+<aside class="notes"><ul>
+<li>can make informers + reflectors on them</li>
+<li>from there you can basically just start handling events</li>
+<li>and ensuring that you can reconcile changes</li>
+<li>but something needs to drive it...</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+Driving an Informer
+
+```rust
+loop {
+    inf.poll()?;
+    while let Some(event) = inf.pop() {
+        reconcile(&client, event)?;
+    }
+}
+```
+
+<aside class="notes"><ul>
+<li>rwlock internally, but otherwishe shareable informer/reflector</li>
+<li>poll writes to the state, pop extracts</li>
+<li>similar for reflector</li>
+<li>loop to drive in ex, if you have other stuff (web), make a thread</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+Putting it together
+
+```rust
+#[derive(Clone)]
+pub struct Controller {
+    inf: Informer<Foo>,
+    state: Arc<RwLock<State>>,
+    metrics: Arc<RwLock<Metrics>>,
+    client: APIClient,
+}
+```
+
+```rust
+#[derive(Clone)]
+pub struct Watcher {
+    rf: Reflector<Deploy>,
+    state: Arc<RwLock<Vec<Entry>>>,
+    client: APIClient,
+}
+```
+
+<aside class="notes"><ul>
+<li>object to share with actix state</li>
+<li>interface and metrics etc, business logic</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+Putting it together - main
+
+```rust
+fn main() {
+  let cfg = kube::config::incluster_config().or_else(|_| {
+      kube::config::load_kube_config()
+  }).expect("Load kube config");
+  let watcher = Watcher::init(cfg).expect("Watcher init");
+```
+```rust
+  let sys = actix::System::new("watcher");
+  HttpServer::new(move || {
+    App::new()
+      .data(watcher.clone())
+      .wrap(middleware::Logger::default().exclude("/health"))
+      .service(web::resource("/").to(index))
+      .service(web::resource("/health").to(health))
+    })
+    .bind("0.0.0.0:8000").expect("Bind 0.0.0.0:8000")
+    .shutdown_timeout(0)
+    .start();
+  let _ = sys.run();
+}
+```
+
+<aside class="notes"><ul>
+<li>load cfg, init a watcher (not shown here), basically, instantiate watcher + spawn that thread i said</li>
+<li>pass watcher to actix app as Data</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+Putting it together - routes
+
+```rust
+fn index(w: Data<Watcher>, _: HttpRequest) -> HttpResponse {
+    HttpResponse::Ok().json(w.state())
+}
+fn health(_: HttpRequest) -> HttpResponse {
+    HttpResponse::Ok().json("healthy")
+}
+```
+
+<aside class="notes"><ul>
+<li>health pattern matches data away, index uses the watcher</li>
+<li>(you need a getter in Watcher)</li>
+<li>NOT GOING to go more tiny details, leave you with some crates</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+Putting it together - extra crates
+
+<ul>
+  <li class="fragment">prometheus / actix_web_prom</li>
+  <li class="fragment">env_logger</li>
+  <li class="fragment">sentry / sentry_actix <small>([sentry-rust#143](https://github.com/getsentry/sentry-rust/issues/143))</small></li>
+</li>
+
+<aside class="notes"><ul>
+<li>custom metrics =&gt; prometheus library, actix transform for no mesh</li>
+<li>actix_web_prom does basic latency metrics in two lines (.wrap)</li>
+<li>env_logger (precise RUST_LOG drilling really useful, tokio spammy)</li>
+<li>sentry actix integration, 2 lines, panic handler + middleware (unf. broken in actix 1.0)</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+Examples
+
+<ul>
+  <li class="fragment">[kube-rs/examples](https://github.com/clux/kube-rs/tree/master/examples)</li>
+  <li class="fragment">[version-rs](https://github.com/clux/version-rs) (super light, ~100 lines)</li>
+  <li class="fragment">[controllers-rs](https://github.com/clux/controller-rs) (circleci, kube yaml, 3 file split)</li>
+</ul>
+
+<aside class="notes"><ul>
+<li>kube ex for reflectors, informer, basics + api usage</li>
+<li>version-rs for a 100 line watcher with actix and metrics, actix_prom</li>
+<li>controller-rs for a 3 file actix setup with informers, prometheus</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-image="./zoid-no.webp" data-background-size="100% auto" class="color"-->
+
+<aside class="notes"><ul>
+<li>battered</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+
+- Eirik - [github.com/clux](https://github.com/clux) - [clux.dev](https://clux.dev)
+- Babylon Health - [babylonhealth.com](https://babylonhealth.com)
+
+<img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 150px; left: 0px" />
+<img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 150px; left: 140px" />
+<img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 150px; left: 280px" />
+<img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 150px; left: 420px" />
+<img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 150px; left: 560px" />
+</script></section></div>
+        </div>
+
+        <script src="./lib/js/head.min.js"></script>
+        <script src="./js/reveal.js"></script>
+
+        <script>
+            function extend() {
+              var target = {};
+              for (var i = 0; i < arguments.length; i++) {
+                var source = arguments[i];
+                for (var key in source) {
+                  if (source.hasOwnProperty(key)) {
+                    target[key] = source[key];
+                  }
+                }
+              }
+              return target;
+            }
+
+            // Optional libraries used to extend on reveal.js
+            var deps = [
+              { src: './lib/js/classList.js', condition: function() { return !document.body.classList; } },
+              { src: './plugin/markdown/marked.js', condition: function() { return !!document.querySelector('[data-markdown]'); } },
+              { src: './plugin/markdown/markdown.js', condition: function() { return !!document.querySelector('[data-markdown]'); } },
+              { src: './plugin/highlight/highlight.js', async: true, callback: function() { hljs.initHighlightingOnLoad(); } },
+              { src: './plugin/zoom-js/zoom.js', async: true },
+              { src: './plugin/notes/notes.js', async: true },
+              { src: './plugin/math/math.js', async: true }
+            ];
+
+            // default options to init reveal.js
+            var defaultOptions = {
+              controls: true,
+              progress: true,
+              history: true,
+              center: true,
+              transition: 'default', // none/fade/slide/convex/concave/zoom
+              dependencies: deps
+            };
+
+            // options from URL query string
+            var queryOptions = Reveal.getQueryHash() || {};
+
+            var options = {};
+            options = extend(defaultOptions, options, queryOptions);
+        </script>
+
+
+        <script>
+          Reveal.initialize(options);
+        </script>
+    </body>
+</html>
