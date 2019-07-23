@@ -65,32 +65,18 @@ notes:
 <!-- .slide: data-background-image="./zoid-speed.webp" data-background-size="100% auto" class="color"-->
 
 <img src="./gnu.png" style="float: left; background: none; box-shadow: none; border: none; position: absolute; right: 0px" />
-<img src="./alpine.png" style="float: left; filter: brightness(2); background: none; box-shadow: none; border: none; position: absolute;" />
-<img src="./distroless.png" style="float: left; background: none; box-shadow: none; border: none; position: absolute; left: 0px" />
+<img src="./alpine.png" style="float: left; filter: brightness(2); background: none; box-shadow: none; border: none; position: absolute; left: 250px" />
+<img src="./distroless.png" style="float: left; background: none; box-shadow: none; border: none; position: absolute; left: 100px" />
+<b style="color: 0ff; position: absolute; left: 10px; padding-top: 20px">Ø</b>
 
 notes:
-- debian/ub vs alpine vs distroless:static
+- debian/ub vs alpine vs distroless:static vs scratch
 - least privilege principle (sensible argument) => no deb
 - last 2 => compile for musl (libc that lets you compile static)
+- - musl-libc is an 8yo libc impl
+- fewer code paths, less glibc legacy, but more edge cases (locales, glibc specifics)
 - reuseable on all distros (not true other way)
 - benchmark / speed argument of libc choice (contradictory, measure)
-
----
-<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
-
-alpine
-
-<ul>
-  <li class="fragment"><a href="https://www.musl-libc.org/intro.html">musl-libc</a></li>
-  <li class="fragment"><a href="https://busybox.net/downloads/BusyBox.html#commands">busybox</a></li>
-</li>
-
-notes:
-- musl-libc is an 8yo libc impl
-- fewer code paths, less glibc legacy, but more edge cases (locales, glibc specifics)
-- busybox: single binary version 300 linux tools - coreutils replace
-- together: alpine; 5MB linux distro
-- scratch: no certs management
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
@@ -108,10 +94,25 @@ ENTRYPOINT ["/app/controller"]
 ```
 
 notes:
-- always pin your deps (otherwise why even lockfile)
-- dont apk upgrade (3.9 tag updates should receive security upgrades)
+- better for debugging, can shell in
+- still all of busybox in there (5MB but 300 utils from coreutils)
 - ca-certs if you need tls (if you have a service mesh, you might not)
-- rest is just like scratch, copy prebuilt static binary
+
+---
+<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+distroless image
+
+```dockerfile
+FROM gcr.io/distroless/static:nonroot
+COPY --chown=nonroot:nonroot ./controller /app/
+EXPOSE 8080
+ENTRYPOINT ["/app/controller"]
+```
+
+notes:
+- basically scratch, copy prebuilt static binary
+- better than scratch because non-root default, and have certs
+- root problem if app compromised to write to disk
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
@@ -310,11 +311,10 @@ let client = kube::client::APIClient::new(cfg)?;
 ```
 
 <p class="fragment">..[..impersonate locally](https://clux.github.io/probes/post/2019-03-31-impersonating-kube-accounts/)</p>
-TODO: merge eks
 
 notes:
 - LOADING CONFIG: auto injected in-cluster SA, or config
-- local dev might not work if you have auth hooks or oidc providers (can impersonate)
+- local dev might not work if you have auth hooks or oidc providers (can impersonate, (aws eks get-token)
 - BUT ONCE YOU HAVE A CLIENT, YOU CAN
 
 ---
