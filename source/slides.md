@@ -95,7 +95,8 @@ ENTRYPOINT ["/app/controller"]
 
 notes:
 - better for debugging, can shell in
-- still all of busybox in there (5MB but 300 utils from coreutils)
+- usr locks down pkg manager, but:
+- still all of busybox in there (5MB but 300 utils from coreutils), CVEs
 - ca-certs if you need tls (if you have a service mesh, you might not)
 
 ---
@@ -282,12 +283,12 @@ notes:
 <li>minimal:</li>
 ```toml
 [dependencies]
-kube = "0.12.0"
+kube = "0.13.0"
 ```
 <li>with openapi structs:</li>
 ```toml
 [dependencies]
-kube = { version = "0.12.0", features = ["openapi"] }
+kube = { version = "0.13.0", features = ["openapi"] }
 k8s-openapi = { version = "0.4.0", features = ["v1_13"] }
 ```
 
