@@ -32,7 +32,7 @@ notes:
 - official mstage images, debian, docs.. (but only debian)
 - circle docker vs non-docker cmds (but no rust)
 - travis off rust supp outside docker, caching (but awkward docker)
-- USEING: circleci, but own build image (security & caching)
+- USING: circleci, but own build image (security & caching)
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
