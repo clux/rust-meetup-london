@@ -2,7 +2,9 @@
 
 ### Rust on kubernetes
 
-- Eirik Albrigtsen : [github.com/clux](https://github.com/clux) - [clux.dev](https://clux.dev)
+- Eirik Albrigtsen : [github.com/clux](https://github.com/clux) 
+- [clux.dev](https://clux.dev) / [@sszynrae](https://twitter.com/sszynrae)
+
 - Babylon Health : [github.com/Babylonpartners](https://github.com/Babylonpartners)
 
 <img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 300px; left: 0px" />
@@ -12,23 +14,13 @@
 <img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 300px; left: 560px" />
 
 NOTES:
-- Hi. Eirik / clux online. 4y ruster. Platform 4 bab. Also do rust.
+- Hi. Eirik / clux online. Have these things. Write rust for these guys.
 - Talk: Writing kube ctrl (app managing resources in kube), extending the k8s API with your own CRs, and writing controllers for that. all in rust.
-- 1ST: some operational decision need to make, when creating and manging microsvcs in rust
-
----
-<!-- .slide: data-background-image="./fry-safety.webp" data-background-size="100% auto" class="color"-->
-
-notes:
-- safety dance when developing in new lang:
-- lockfiles, pin deps, run tests, lint
-- ez coz: build system
-- ez to justify from cost perspective as well (vs java)
-- BUT dockerising, slightly tricky
+- 1ST: some operational decisions docker and ci, rel. for rust microsvcs
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
-docker
+docker + ci
 
 <ul>
   <li class="fragment">[FROM rust:1.36-stretch](https://hub.docker.com/_/rust)</li>
@@ -37,12 +29,10 @@ docker
 </li>
 
 notes:
-- not tricky because no official support...
-- official mstage images, debian, docs..
-- circle docker vs non-docker cmds (while no rust)
-- travis off rust supp outside docker, caching
-- USING circle (even if cfg == error-prone, quirky yaml), generic guidelines
-
+- official mstage images, debian, docs.. (but only debian)
+- circle docker vs non-docker cmds (but no rust)
+- travis off rust supp outside docker, caching (but awkward docker)
+- USEING: circleci, but own build image (security & caching)
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
@@ -70,13 +60,13 @@ notes:
 <b style="color: 0ff; position: absolute; left: 10px; padding-top: 20px">Ø</b>
 
 notes:
-- debian/ub vs alpine vs distroless:static vs scratch
-- least privilege principle (sensible argument) => no deb
+- choose 3/4. don't want CVEs.
+- least privilege principle (sensible argument)
 - last 2 => compile for musl (libc that lets you compile static)
-- - musl-libc is an 8yo libc impl
-- fewer code paths, less glibc legacy, but more edge cases (locales, glibc specifics)
-- reuseable on all distros (not true other way)
+- can use distro:base, but wont coz: static reuseable on all distros
+- generally fine compat: musl-libc is an 8yo libc impl
 - benchmark / speed argument of libc choice (contradictory, measure)
+- fewer code paths, less glibc legacy, but more edge cases (locales, glibc specifics)
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
@@ -145,7 +135,7 @@ notes:
 - curl, openssl, psql, zlib, sqlite (most frequent deps)
 - one of 3-4 big musl build images (this is the only one that builds continually and makes descriptive tags), 2M dls
 - push like 20GB a month from travis for free for this
-- bump stable every 6w, and script to auto-bump deps
+- bump stable every 6w, and script to auto-bump deps, comprehensive tests
 - my image, so you may want to fork it in a company.. really rust should support it (but no feedback on that)
 
 ---
@@ -162,22 +152,6 @@ docker run --rm \
 notes:
 - how to add a cache
 - can also do .cargo/git
-
----
-ci flow
-
-```
-1. cargo test
-1. cargo build --release
-2. docker build && docker push
-2. github releases
-```
-
-notes:
-- 1 stashes musl binary, 2 attaches it from prev (so super quick)
-- 2 master only (maybe tag only)
-- releasing for cli bins (may do multiple release builds)
-- what is multistage except removing that possibility for a tiny encapulation win?
 
 ---
 caching (circleci)
@@ -206,12 +180,31 @@ caching (circleci)
 [cargo#5026](https://github.com/rust-lang/cargo/issues/5026)
 
 notes:
-- minimal circle steps with caching
-- caches two things: registry (DOWNLOADING CRATE), target (COMPILING CRATE)
-- {TRIPLE} = `x86_64-unknown-linux-musl`
+- minimal cache: restore, build save
 - additive unbounded; add evar, cargo clean, or base cache on sha(lockfile)
 - sha(lockfile) is inefficient depending on release cadence
 - cargo clean bug, cargo sweep
+
+---
+<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+run
+
+```sh
+cargo test
+cargo build --release
+```
+then
+
+```sh
+docker build && docker push
+github releases
+```
+
+notes:
+- 1 stashes musl binary, 2 attaches it from prev (so super quick)
+- 2 master only (maybe tag only)
+- releasing for cli bins (may do multiple release builds)
+- what is multistage except removing that possibility for a tiny encapulation win?
 
 ---
 flow (circleci)
@@ -438,18 +431,18 @@ Controller scope
 notes:
 - limiting my talk to rust stuff, assuming some CRD familiarity here.. BUT:
 - busy people: all controllers, great 4 learning kube + ctrl scope KCon2019
-- Writing Controllers for CRDs (doing it in go, shows what a ballache it is)
+- Writing Controllers for CRDs (doing it in go, shows what a faff it is)
 - Last one, high level. Useful for knowing why controllers are what they are.
 - CNCF channel has all kubecon videos
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
-Controller patterns
+Controller TL;DR
 
 ```basic
-10 WATCH CustomResource:
-     WHILE WatchEvent
-         RECONCILE(CustomResource, event)
+10 WATCH RESOURCE:
+     WHILE EVENT:
+         RECONCILE(RESOURCE, EVENT)
 20 GOTO 10
 ```
 
@@ -474,7 +467,6 @@ notes:
 - Reflector: maintains an in memory cache of all Ks
 - Use case: monitoring a resource, presenting an api around many resources..
 - (Can build a Ref from an Inf by just using events to update a local Map).
-- Both: updates when it polls, with a RwLock, and lets you read whenever.
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
@@ -627,13 +619,13 @@ loop {
 ```
 
 notes:
-- rwlock internally, but otherwishe shareable informer/reflector
+- rwlock internally, so you use it safely
 - poll writes to the state, pop extracts
-- similar for reflector
 - loop to drive in ex, if you have other stuff (web), make a thread
+- similar for reflector
 
 ---
-<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+<!-- .slide: data-background-color="#353t535" class="center color" style="text-align: left;" -->
 Putting it together
 
 ```rust
@@ -695,11 +687,11 @@ notes:
 Putting it together - routes
 
 ```rust
-fn index(w: Data<Watcher>, _: HttpRequest) -> HttpResponse {
-    HttpResponse::Ok().json(w.state())
-}
 fn health(_: HttpRequest) -> HttpResponse {
     HttpResponse::Ok().json("healthy")
+}
+fn index(w: Data<Watcher>, _: HttpRequest) -> HttpResponse {
+    HttpResponse::Ok().json(w.state())
 }
 ```
 
@@ -756,3 +748,8 @@ notes:
 <img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 150px; left: 280px" />
 <img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 150px; left: 420px" />
 <img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 150px; left: 560px" />
+
+
+
+---
+<!-- .slide: data-background-image="./fry-safety.webp" data-background-size="100% auto" class="color"-->
