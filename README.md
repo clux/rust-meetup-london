@@ -6,7 +6,7 @@ https://www.meetup.com/Rust-London-User-Group/events/262999277/
 
 ```sh
 npm i -g reveal-md
-reveal-md source/slides.md
+make serve
 ```
 
 or just browse the github pages.
@@ -14,7 +14,7 @@ or just browse the github pages.
 ## Building
 
 ```sh
-reveal-md source/slides.md --static docs --static-dirs=source --assets-dir=source --absolute-url https://clux.github.io/rust-meetup-london/
+make build
 ```
 
-Ensure all urls are relative (i.e. start with ./)
+Ensure all urls are relative (i.e. start with `./``)
