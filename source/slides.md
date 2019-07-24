@@ -335,24 +335,6 @@ notes:
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
-Using the kube api
-
-```rust
-let f = json!({
-    "apiVersion": "clux.dev/v1",
-    "kind": "Foo",
-    "metadata": { "name": "baz" },
-    "spec": { "name": "baz", "info": "baz info" },
-});
-let o = foos.create(&pp, serde_json::to_vec(&f)?)?;
-assert_eq!(f["metadata"]["name"], o.metadata.name)
-```
-notes:
-- quick spec with serde json!
-- attach objs to parts of it
-
----
-<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
 Under the hood
 
 ```rust
@@ -381,6 +363,24 @@ notes:
 - hidden subresources like get_scale, replace_status, done most core objs
 - some special verbs missing (drain on nodes, logs on pods)
 - delete either (Left==201 created, Right==200)
+
+---
+<!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+Using create
+
+```rust
+let f = json!({
+    "apiVersion": "clux.dev/v1",
+    "kind": "Foo",
+    "metadata": { "name": "baz" },
+    "spec": { "name": "baz", "info": "baz info" },
+});
+let o = foos.create(&pp, serde_json::to_vec(&f)?)?;
+assert_eq!(f["metadata"]["name"], o.metadata.name)
+```
+notes:
+- no text yaml -> serde json!
+- attach objs to parts if Serialize impl
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
@@ -415,7 +415,7 @@ notes:
 - should you? if no answer: read this on k8s io docs..
 - philosophical distictions that only matter for large distributed systems.
 - reconciliation loops running constantly and more efficiently can help you auto-heal faster
-- sep concerns: force your app to only deal with on resource by rbac (like a rust ritual) better in long run
+- sep concerns: force your app to only deal with on resource by rbac, isolation
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
