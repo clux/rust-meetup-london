@@ -62,7 +62,7 @@ notes:
 notes:
 - choose 3/4. don't want CVEs.
 - least privilege principle (sensible argument)
-- last 2 => compile for musl (libc that lets you compile static)
+- last 3 => compile for musl (libc that lets you compile static)
 - can use distro:base, but wont coz: static reuseable on all distros
 - generally fine compat: musl-libc is an 8yo libc impl
 - benchmark / speed argument of libc choice (contradictory, measure)
@@ -287,7 +287,7 @@ k8s-openapi = { version = "0.4.0", features = ["v1_13"] }
 
 notes:
 - kube crate (there's 3, this is _the one_ that tries to do a simplified api and higher level concepts)
-- minimal; great for just crds or no native objs (or writing self)
+- minimal; great for just crds or not native objs
 - full openapi generated structs from api, but pretty heavy dep
 - if you wanna write a subset of structs (memory, or less deps) you can..
 
@@ -740,16 +740,14 @@ notes:
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
 
-- Eirik - [github.com/clux](https://github.com/clux) - [clux.dev](https://clux.dev)
-- Babylon Health - [babylonhealth.com](https://babylonhealth.com)
+- Eirik Albrigtsen : [github.com/clux](https://github.com/clux)
 
-<img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 150px; left: 0px" />
-<img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 150px; left: 140px" />
-<img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 150px; left: 280px" />
-<img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 150px; left: 420px" />
-<img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 150px; left: 560px" />
+- [clux.dev](https://clux.dev) / [@sszynrae](https://twitter.com/sszynrae)
 
+- Babylon Health : [github.com/Babylonpartners](https://github.com/Babylonpartners)
 
-
----
-<!-- .slide: data-background-image="./fry-safety.webp" data-background-size="100% auto" class="color"-->
+<img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 300px; left: 0px" />
+<img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 300px; left: 140px" />
+<img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 300px; left: 280px" />
+<img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 300px; left: 420px" />
+<img src="./babylon.png" style="background: none; box-shadow: none; border: none; width: 120px; position: absolute; top: 300px; left: 560px" />
