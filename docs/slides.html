@@ -335,23 +335,6 @@ for p in pods.list(&ListParams::default())?.items {
 <li>less features, but not 20x! no self-queue impl...</li>
 </ul>
 </aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
-Using the kube api
-
-```rust
-let f = json!({
-    "apiVersion": "clux.dev/v1",
-    "kind": "Foo",
-    "metadata": { "name": "baz" },
-    "spec": { "name": "baz", "info": "baz info" },
-});
-let o = foos.create(&pp, serde_json::to_vec(&f)?)?;
-assert_eq!(f["metadata"]["name"], o.metadata.name)
-```
-<aside class="notes"><ul>
-<li>quick spec with serde json!</li>
-<li>attach objs to parts of it</li>
-</ul>
-</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
 Under the hood
 
 ```rust
@@ -380,6 +363,23 @@ impl<K> Api<K> where
 <li>hidden subresources like get_scale, replace_status, done most core objs</li>
 <li>some special verbs missing (drain on nodes, logs on pods)</li>
 <li>delete either (Left==201 created, Right==200)</li>
+</ul>
+</aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
+Using create
+
+```rust
+let f = json!({
+    "apiVersion": "clux.dev/v1",
+    "kind": "Foo",
+    "metadata": { "name": "baz" },
+    "spec": { "name": "baz", "info": "baz info" },
+});
+let o = foos.create(&pp, serde_json::to_vec(&f)?)?;
+assert_eq!(f["metadata"]["name"], o.metadata.name)
+```
+<aside class="notes"><ul>
+<li>no text yaml -&gt; serde json!</li>
+<li>attach objs to parts if Serialize impl</li>
 </ul>
 </aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
 
@@ -412,7 +412,7 @@ why write a controller for my resource?
 <li>should you? if no answer: read this on k8s io docs..</li>
 <li>philosophical distictions that only matter for large distributed systems.</li>
 <li>reconciliation loops running constantly and more efficiently can help you auto-heal faster</li>
-<li>sep concerns: force your app to only deal with on resource by rbac (like a rust ritual) better in long run</li>
+<li>sep concerns: force your app to only deal with on resource by rbac, isolation</li>
 </ul>
 </aside></script></section><section  data-markdown><script type="text/template"><!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
 Controller scope
