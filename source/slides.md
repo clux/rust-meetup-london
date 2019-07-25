@@ -103,7 +103,6 @@ ENTRYPOINT ["/app/controller"]
 notes:
 - basically scratch, copy prebuilt static binary
 - better than scratch because non-root default, and have certs
-- root problem if app compromised to write to disk
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
@@ -118,7 +117,7 @@ notes:
 - easiest locally, might work nice on travis
 - but C deps..
 - openssl big one (might be replaced by rustls.. BUT)
-- psql (requires --with-openssl build)
+- postgres (libpq requires --with-openssl build)
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
@@ -132,11 +131,11 @@ docker run --rm \
 ```
 
 notes:
-- curl, openssl, psql, zlib, sqlite (most frequent deps)
+- curl, openssl, libpq, zlib, sqlite (most frequent deps)
 - one of 3-4 big musl build images (this is the only one that builds continually and makes descriptive tags), 2M dls
 - push like 20GB a month from travis for free for this
 - bump stable every 6w, and script to auto-bump deps, comprehensive tests
-- my image, so you may want to fork it in a company.. really rust should support it (but no feedback on that)
+- my image, so you may want to fork it in a company.. really rust should support musl docker, happy to help
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
@@ -183,7 +182,7 @@ notes:
 - minimal cache: restore, build save
 - additive unbounded; add evar, cargo clean, or base cache on sha(lockfile)
 - sha(lockfile) is inefficient depending on release cadence
-- cargo clean bug, cargo sweep
+- cargo clean bug, cargo sweep not really solving it
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
@@ -698,7 +697,7 @@ fn index(w: Data<Watcher>, _: HttpRequest) -> HttpResponse {
 notes:
 - health pattern matches data away, index uses the watcher
 - (you need a getter in Watcher)
-- NOT GOING to go more tiny details, leave you with some crates
+- NOT GOING to go into smaller details, leave you with some crates
 
 ---
 <!-- .slide: data-background-color="#353535" class="center color" style="text-align: left;" -->
